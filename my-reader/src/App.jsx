@@ -2,16 +2,38 @@ import { useState } from 'react'
 import './App.css'
 import DropZone from './components/DropZone'
 import Library from './components/Library'
+import EpubReader from './components/EpubReader'
+import PdfReader from './components/PdfReader'
 
 function App() {
   const [showDropZone, setShowDropZone] = useState(false)
+  const [activeBook, setActiveBook] = useState(null)
 
   function handleBookAdded() {
     setShowDropZone(false)
   }
 
-  function handleOpenBook(book) {
-    console.log('open book:', book)
+  if (activeBook) {
+    if (activeBook.fileType === 'pdf') {
+      return (
+        <PdfReader
+          bookId={activeBook.id}
+          title={activeBook.title}
+          fileData={activeBook.fileData}
+          savedPage={activeBook.lastPosition}
+          onBack={() => setActiveBook(null)}
+        />
+      )
+    }
+    return (
+      <EpubReader
+        bookId={activeBook.id}
+        title={activeBook.title}
+        fileData={activeBook.fileData}
+        savedCfi={activeBook.lastPosition}
+        onBack={() => setActiveBook(null)}
+      />
+    )
   }
 
   return (
@@ -27,7 +49,7 @@ function App() {
       </header>
 
       <main className="flex-1 w-full px-8 py-8">
-        <Library onOpenBook={handleOpenBook} />
+        <Library onOpenBook={setActiveBook} />
       </main>
 
       {showDropZone && (
