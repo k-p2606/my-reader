@@ -1,6 +1,16 @@
 import { useState, useRef } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import db from '../db';
+import BookDetail from './BookDetail';
+import TrackLinkModal from './TrackLinkModal';
+
+const STATUS_LABELS = { want: 'Want to read', reading: 'Reading', finished: 'Finished', dnf: 'DNF' };
+const STATUS_COLORS = {
+  want:     'bg-gray-100 text-gray-500',
+  reading:  'bg-blue-50 text-blue-600',
+  finished: 'bg-green-50 text-green-600',
+  dnf:      'bg-red-50 text-red-400',
+};
 
 function getFileType(file) {
   if (file.name.endsWith('.epub') || file.type === 'application/epub+zip') return 'epub';
@@ -129,85 +139,139 @@ function EmptyState() {
   );
 }
 
-function BookCard({ book, onOpen }) {
+function BookCard({ book, linkedTracked, onClick }) {
   const [confirming, setConfirming] = useState(false);
+  const [showTrack,  setShowTrack]  = useState(false);
 
-  function handleDelete() {
+  function handleDelete(e) {
+    e.stopPropagation();
     db.books.delete(book.id);
   }
 
   return (
-    <div className="flex flex-col justify-between gap-3 border rounded-xl p-4 bg-white shadow-sm hover:shadow-md transition-shadow">
-      <div>
-        <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">
-          {book.fileType}
-        </span>
-        <p className="mt-1 text-sm font-medium text-gray-800 line-clamp-3 leading-snug">
-          {book.title}
-        </p>
+    <>
+      <div
+        onClick={!confirming ? onClick : undefined}
+        className="flex flex-col justify-between gap-3 border rounded-xl p-4 bg-white shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+      >
+        <div>
+          <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+            {book.fileType}
+          </span>
+          <p className="mt-1 text-sm font-medium text-gray-800 line-clamp-3 leading-snug">
+            {book.title}
+          </p>
+        </div>
+
+        {book.progress > 0 && (
+          <div className="space-y-1">
+            <div className="h-1 w-full bg-gray-100 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-gray-800 rounded-full transition-all duration-300"
+                style={{ width: `${Math.min(100, Math.round(book.progress * 100))}%` }}
+              />
+            </div>
+            <p className="text-xs text-gray-400">{Math.round(book.progress * 100)}%</p>
+          </div>
+        )}
+
+        {confirming ? (
+          <div
+            onClick={e => e.stopPropagation()}
+            className="flex items-center gap-2 mt-auto"
+          >
+            <span className="text-xs text-gray-500 flex-1">Remove book?</span>
+            <button
+              onClick={e => { e.stopPropagation(); setConfirming(false); }}
+              className="text-xs font-semibold text-gray-500 hover:text-gray-800 px-2 py-1.5 rounded-lg hover:bg-gray-100 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleDelete}
+              className="text-xs font-semibold text-white bg-red-500 hover:bg-red-600 rounded-lg px-2 py-1.5 transition-colors"
+            >
+              Delete
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between mt-auto">
+            <button
+              onClick={e => { e.stopPropagation(); setShowTrack(true); }}
+              className={linkedTracked
+                ? `text-xs font-semibold rounded-full px-2.5 py-1 transition-colors ${STATUS_COLORS[linkedTracked.status] ?? 'bg-gray-100 text-gray-400'}`
+                : 'text-xs text-gray-400 hover:text-gray-600 transition-colors'
+              }
+            >
+              {linkedTracked ? (STATUS_LABELS[linkedTracked.status] ?? linkedTracked.status) : '+ Track'}
+            </button>
+            <button
+              onClick={e => { e.stopPropagation(); setConfirming(true); }}
+              className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+              aria-label="Delete book"
+            >
+              <TrashIcon />
+            </button>
+          </div>
+        )}
       </div>
 
-      {book.progress > 0 && (
-        <div className="space-y-1">
-          <div className="h-1 w-full bg-gray-100 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-gray-800 rounded-full transition-all duration-300"
-              style={{ width: `${Math.min(100, Math.round(book.progress * 100))}%` }}
-            />
-          </div>
-          <p className="text-xs text-gray-400">{Math.round(book.progress * 100)}%</p>
-        </div>
+      {showTrack && (
+        <TrackLinkModal
+          book={book}
+          linkedTracked={linkedTracked}
+          onClose={() => setShowTrack(false)}
+        />
       )}
-
-      {confirming ? (
-        <div className="flex items-center gap-2 mt-auto">
-          <span className="text-xs text-gray-500 flex-1">Remove book?</span>
-          <button
-            onClick={() => setConfirming(false)}
-            className="text-xs font-semibold text-gray-500 hover:text-gray-800 px-2 py-1.5 rounded-lg hover:bg-gray-100 transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleDelete}
-            className="text-xs font-semibold text-white bg-red-500 hover:bg-red-600 rounded-lg px-2 py-1.5 transition-colors"
-          >
-            Delete
-          </button>
-        </div>
-      ) : (
-        <div className="flex items-center gap-2 mt-auto">
-          <button
-            onClick={() => onOpen?.(book)}
-            className="flex-1 text-xs font-semibold text-white bg-gray-800 hover:bg-gray-700 rounded-lg px-3 py-1.5 transition-colors"
-          >
-            Open
-          </button>
-          <button
-            onClick={() => setConfirming(true)}
-            className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
-            aria-label="Delete book"
-          >
-            <TrashIcon />
-          </button>
-        </div>
-      )}
-    </div>
+    </>
   );
 }
 
 export default function Library({ onOpenBook }) {
-  const books = useLiveQuery(() => db.books.toArray(), []);
+  const [detailBook, setDetailBook] = useState(null);
+  const books        = useLiveQuery(() => db.books.toArray(),        []);
+  const trackedBooks = useLiveQuery(() => db.trackedBooks.toArray(), []) ?? [];
 
-  if (books === undefined) return null;
+  const trackedById = Object.fromEntries(trackedBooks.map(t => [t.id, t]));
+
+  if (books === undefined) return (
+    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 mt-8">
+      {Array.from({ length: 8 }).map((_, i) => (
+        <div key={i} className="flex flex-col gap-3 border rounded-xl p-4 bg-white shadow-sm">
+          <div className="space-y-2">
+            <div className="h-2.5 w-8 bg-gray-200 rounded animate-pulse" />
+            <div className="h-3.5 bg-gray-200 rounded animate-pulse" />
+            <div className="h-3.5 bg-gray-200 rounded animate-pulse w-4/5" />
+            <div className="h-3.5 bg-gray-200 rounded animate-pulse w-3/5" />
+          </div>
+          <div className="h-1 bg-gray-200 rounded-full animate-pulse mt-auto" />
+        </div>
+      ))}
+    </div>
+  );
 
   if (books.length === 0) return <EmptyState />;
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 mt-8">
-      {books.map(book => (
-        <BookCard key={book.id} book={book} onOpen={onOpenBook} />
-      ))}
-    </div>
+    <>
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 mt-8">
+        {books.map(book => (
+          <BookCard
+            key={book.id}
+            book={book}
+            linkedTracked={book.trackedBookId ? trackedById[book.trackedBookId] : null}
+            onClick={() => setDetailBook(book)}
+          />
+        ))}
+      </div>
+
+      {detailBook && (
+        <BookDetail
+          book={detailBook}
+          onClose={() => setDetailBook(null)}
+          onOpen={book => { setDetailBook(null); onOpenBook?.(book); }}
+        />
+      )}
+    </>
   );
 }

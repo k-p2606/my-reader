@@ -74,7 +74,7 @@ export default function EpubReader({ bookId, title, fileData, savedCfi, onBack }
 
     rendition.display(savedCfi || undefined);
 
-    rendition.on('relocated', (location) => {
+    rendition.on('relocated', async (location) => {
       const cfi = location.start.cfi;
       db.books.update(bookId, { lastPosition: cfi });
 
@@ -85,7 +85,13 @@ export default function EpubReader({ bookId, title, fileData, savedCfi, onBack }
         const totalInChapter = location.start.displayed?.total || 1;
         const pct = Math.min(1, (chapterIdx + pageInChapter / totalInChapter) / total);
         setCurrentProgress(pct);
-        if (pct > 0) db.books.update(bookId, { progress: pct });
+        if (pct > 0) {
+          db.books.update(bookId, { progress: pct });
+          const tracked = await db.trackedBooks.where('title').equals(title).first();
+          if (tracked) {
+            db.trackedBooks.update(tracked.id, { readerProgress: pct });
+          }
+        }
       }
     });
 

@@ -106,6 +106,13 @@ export default function PdfReader({ bookId, title, fileData, savedPage, onBack }
   }
 
   useEffect(() => {
+    if (!totalPages) return;
+    db.trackedBooks.where('title').equals(title).first().then(tracked => {
+      if (tracked) db.trackedBooks.update(tracked.id, { pagesRead: pageNum });
+    });
+  }, [pageNum, totalPages]);
+
+  useEffect(() => {
     function onKeyDown(e) {
       if (e.key === 'ArrowLeft') prevPage();
       if (e.key === 'ArrowRight') nextPage();
