@@ -6,11 +6,21 @@ import TrackLinkModal from './TrackLinkModal';
 
 const STATUS_LABELS = { want: 'Want to read', reading: 'Reading', finished: 'Finished', dnf: 'DNF' };
 const STATUS_COLORS = {
-  want:     'bg-gray-100 text-gray-500',
-  reading:  'bg-blue-50 text-blue-600',
-  finished: 'bg-green-50 text-green-600',
+  want:     'bg-parchment text-muted',
+  reading:  'bg-rust-soft text-rust',
+  finished: 'bg-[#E8F0E6] text-[#3A6435]',
   dnf:      'bg-red-50 text-red-400',
 };
+
+const COVER_COLORS = [
+  '#8B3525', '#6B5540', '#3D4A3A', '#4A3D58', '#2A404E', '#5C4527', '#3A3028', '#4E4535',
+];
+
+function hashTitle(str) {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) >>> 0;
+  return h;
+}
 
 function getFileType(file) {
   if (file.name.endsWith('.epub') || file.type === 'application/epub+zip') return 'epub';
@@ -44,19 +54,11 @@ function EmptyState() {
   async function handleFile(file) {
     setError(null);
     const fileType = getFileType(file);
-    if (!fileType) {
-      setError('Only .epub and .pdf files are supported.');
-      return;
-    }
+    if (!fileType) { setError('Only .epub and .pdf files are supported.'); return; }
     setLoading(true);
     try {
       const fileData = await readAsArrayBuffer(file);
-      await db.books.add({
-        title: file.name.replace(/\.(epub|pdf)$/i, ''),
-        fileType,
-        fileData,
-        lastPosition: null,
-      });
+      await db.books.add({ title: file.name.replace(/\.(epub|pdf)$/i, ''), fileType, fileData, lastPosition: null });
     } catch {
       setError('Failed to save the file. Please try again.');
     } finally {
@@ -64,30 +66,18 @@ function EmptyState() {
     }
   }
 
-  function onDragOver(e) {
-    e.preventDefault();
-    setDragging(true);
-  }
-
-  function onDragLeave(e) {
-    if (!e.currentTarget.contains(e.relatedTarget)) setDragging(false);
-  }
-
-  function onDrop(e) {
-    e.preventDefault();
-    setDragging(false);
-    const file = e.dataTransfer.files[0];
-    if (file) handleFile(file);
-  }
-
-  function onInputChange(e) {
-    const file = e.target.files[0];
-    if (file) handleFile(file);
-    e.target.value = '';
-  }
+  function onDragOver(e) { e.preventDefault(); setDragging(true); }
+  function onDragLeave(e) { if (!e.currentTarget.contains(e.relatedTarget)) setDragging(false); }
+  function onDrop(e) { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }
+  function onInputChange(e) { const f = e.target.files[0]; if (f) handleFile(f); e.target.value = ''; }
 
   return (
-    <div className="flex items-center justify-center py-12 px-4">
+    <div className="flex flex-col items-start py-8">
+      <p className="text-[10px] font-semibold tracking-[0.18em] uppercase text-muted">/ your library</p>
+      <h1 className="font-serif italic font-semibold text-4xl md:text-[3.25rem] text-ink leading-[1.1] mt-2 mb-10">
+        empty shelves,<br />waiting.
+      </h1>
+
       <div
         onDragOver={onDragOver}
         onDragLeave={onDragLeave}
@@ -95,45 +85,35 @@ function EmptyState() {
         onClick={() => !loading && inputRef.current.click()}
         className={[
           'flex flex-col items-center justify-center gap-5 w-full max-w-xl',
-          'border-2 border-dashed rounded-3xl py-24 px-12 cursor-pointer select-none',
+          'border-2 border-dashed rounded-3xl py-20 px-12 cursor-pointer select-none',
           'transition-colors duration-150',
-          dragging
-            ? 'border-blue-400 bg-blue-50'
-            : 'border-gray-200 bg-gray-50 hover:border-gray-300 hover:bg-white',
+          dragging ? 'border-rust bg-rust-soft' : 'border-dust bg-parchment/50 hover:border-dust-dark hover:bg-parchment',
           loading && 'opacity-60 cursor-wait',
         ].join(' ')}
       >
-        <input
-          ref={inputRef}
-          type="file"
-          accept=".epub,.pdf"
-          className="hidden"
-          onChange={onInputChange}
-        />
+        <input ref={inputRef} type="file" accept=".epub,.pdf" className="hidden" onChange={onInputChange} />
 
         <svg
-          className={`w-14 h-14 transition-colors ${dragging ? 'text-blue-400' : 'text-gray-300'}`}
+          className={`w-12 h-12 transition-colors ${dragging ? 'text-rust' : 'text-faint'}`}
           fill="none" stroke="currentColor" strokeWidth={1.2} viewBox="0 0 24 24"
         >
           <path strokeLinecap="round" strokeLinejoin="round" d="M12 16.5v-9m0 0-3 3m3-3 3 3M6.75 19.5a4.5 4.5 0 0 1-1.41-8.775 5.25 5.25 0 0 1 10.338-2.032A4.501 4.501 0 0 1 17.25 19.5H6.75Z" />
         </svg>
 
         {loading ? (
-          <p className="text-sm font-medium text-gray-500">Saving book…</p>
+          <p className="text-sm font-medium text-muted">Saving book…</p>
         ) : (
           <div className="text-center space-y-1.5">
-            <p className={`text-base font-semibold transition-colors ${dragging ? 'text-blue-600' : 'text-gray-600'}`}>
-              {dragging ? 'Drop it!' : 'Drop an EPUB or PDF here to get started'}
+            <p className={`text-base font-semibold transition-colors ${dragging ? 'text-rust' : 'text-muted'}`}>
+              {dragging ? 'Drop it here.' : 'Drop an EPUB or PDF to get started'}
             </p>
-            <p className="text-sm text-gray-400">
+            <p className="text-sm text-faint">
               or <span className="underline underline-offset-2">browse your files</span>
             </p>
           </div>
         )}
 
-        {error && (
-          <p className="text-xs text-red-500 font-medium">{error}</p>
-        )}
+        {error && <p className="text-xs text-red-500 font-medium">{error}</p>}
       </div>
     </div>
   );
@@ -143,6 +123,9 @@ function BookCard({ book, linkedTracked, onClick }) {
   const [confirming, setConfirming] = useState(false);
   const [showTrack,  setShowTrack]  = useState(false);
 
+  const coverColor = COVER_COLORS[hashTitle(book.title) % COVER_COLORS.length];
+  const progress = book.progress > 0 ? Math.min(100, Math.round(book.progress * 100)) : 0;
+
   function handleDelete(e) {
     e.stopPropagation();
     db.books.delete(book.id);
@@ -150,64 +133,72 @@ function BookCard({ book, linkedTracked, onClick }) {
 
   return (
     <>
-      <div
-        onClick={!confirming ? onClick : undefined}
-        className="flex flex-col justify-between gap-3 border rounded-xl p-4 bg-white shadow-sm hover:shadow-md transition-shadow cursor-pointer"
-      >
-        <div>
-          <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">
-            {book.fileType}
-          </span>
-          <p className="mt-1 text-sm font-medium text-gray-800 line-clamp-3 leading-snug">
-            {book.title}
-          </p>
+      <div className="flex flex-col rounded-2xl overflow-hidden border border-dust shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer">
+        {/* Cover */}
+        <div
+          onClick={!confirming ? onClick : undefined}
+          className="relative flex flex-col justify-end p-4 select-none"
+          style={{ background: coverColor, minHeight: '195px' }}
+        >
+          <div>
+            <p className="font-serif italic text-white/90 text-sm leading-snug line-clamp-4">
+              {book.title}
+            </p>
+            <p className="text-[9px] font-bold tracking-[0.15em] uppercase text-white/40 mt-1.5">
+              {book.fileType}
+            </p>
+          </div>
         </div>
 
-        {book.progress > 0 && (
-          <div className="space-y-1">
-            <div className="h-1 w-full bg-gray-100 rounded-full overflow-hidden">
+        {/* Progress bar */}
+        {progress > 0 && (
+          <div className="px-3.5 pt-3 bg-warm-white">
+            <div className="h-0.5 w-full bg-dust rounded-full overflow-hidden">
               <div
-                className="h-full bg-gray-800 rounded-full transition-all duration-300"
-                style={{ width: `${Math.min(100, Math.round(book.progress * 100))}%` }}
+                className="h-full bg-rust rounded-full transition-all duration-300"
+                style={{ width: `${progress}%` }}
               />
             </div>
-            <p className="text-xs text-gray-400">{Math.round(book.progress * 100)}%</p>
           </div>
         )}
 
+        {/* Footer */}
         {confirming ? (
           <div
             onClick={e => e.stopPropagation()}
-            className="flex items-center gap-2 mt-auto"
+            className="flex items-center gap-2 px-3.5 py-3 bg-warm-white"
           >
-            <span className="text-xs text-gray-500 flex-1">Remove book?</span>
+            <span className="text-xs text-muted flex-1">Remove?</span>
             <button
               onClick={e => { e.stopPropagation(); setConfirming(false); }}
-              className="text-xs font-semibold text-gray-500 hover:text-gray-800 px-2 py-1.5 rounded-lg hover:bg-gray-100 transition-colors"
+              className="text-xs font-medium text-muted hover:text-ink px-2 py-1 rounded-lg hover:bg-parchment transition-colors"
             >
               Cancel
             </button>
             <button
               onClick={handleDelete}
-              className="text-xs font-semibold text-white bg-red-500 hover:bg-red-600 rounded-lg px-2 py-1.5 transition-colors"
+              className="text-xs font-semibold text-white bg-red-500 hover:bg-red-600 rounded-lg px-2 py-1 transition-colors"
             >
               Delete
             </button>
           </div>
         ) : (
-          <div className="flex items-center justify-between mt-auto">
+          <div className="flex items-center justify-between px-3.5 py-3 bg-warm-white">
             <button
               onClick={e => { e.stopPropagation(); setShowTrack(true); }}
-              className={linkedTracked
-                ? `text-xs font-semibold rounded-full px-2.5 py-1 transition-colors ${STATUS_COLORS[linkedTracked.status] ?? 'bg-gray-100 text-gray-400'}`
-                : 'text-xs text-gray-400 hover:text-gray-600 transition-colors'
-              }
+              className={`text-[11px] font-semibold rounded-full px-2.5 py-0.5 transition-colors ${
+                linkedTracked
+                  ? STATUS_COLORS[linkedTracked.status] ?? 'bg-parchment text-muted'
+                  : 'text-faint hover:text-muted'
+              }`}
             >
-              {linkedTracked ? (STATUS_LABELS[linkedTracked.status] ?? linkedTracked.status) : '+ Track'}
+              {linkedTracked
+                ? (STATUS_LABELS[linkedTracked.status] ?? linkedTracked.status)
+                : (progress > 0 ? `${progress}%` : '+ track')}
             </button>
             <button
               onClick={e => { e.stopPropagation(); setConfirming(true); }}
-              className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+              className="p-1.5 rounded-lg text-faint hover:text-rust hover:bg-rust-soft transition-colors"
               aria-label="Delete book"
             >
               <TrashIcon />
@@ -231,22 +222,24 @@ export default function Library({ onOpenBook }) {
   const [detailBook, setDetailBook] = useState(null);
   const books        = useLiveQuery(() => db.books.toArray(),        []);
   const trackedBooks = useLiveQuery(() => db.trackedBooks.toArray(), []) ?? [];
-
-  const trackedById = Object.fromEntries(trackedBooks.map(t => [t.id, t]));
+  const trackedById  = Object.fromEntries(trackedBooks.map(t => [t.id, t]));
 
   if (books === undefined) return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 mt-8">
-      {Array.from({ length: 8 }).map((_, i) => (
-        <div key={i} className="flex flex-col gap-3 border rounded-xl p-4 bg-white shadow-sm">
-          <div className="space-y-2">
-            <div className="h-2.5 w-8 bg-gray-200 rounded animate-pulse" />
-            <div className="h-3.5 bg-gray-200 rounded animate-pulse" />
-            <div className="h-3.5 bg-gray-200 rounded animate-pulse w-4/5" />
-            <div className="h-3.5 bg-gray-200 rounded animate-pulse w-3/5" />
+    <div>
+      <div className="mb-10">
+        <div className="h-3 w-24 bg-dust rounded-full animate-pulse" />
+        <div className="h-12 w-72 bg-dust rounded-xl animate-pulse mt-3" />
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+        {Array.from({ length: 8 }).map((_, i) => (
+          <div key={i} className="rounded-2xl overflow-hidden border border-dust">
+            <div className="h-48 bg-dust animate-pulse" />
+            <div className="p-3.5 bg-warm-white space-y-2">
+              <div className="h-2 bg-dust rounded-full animate-pulse w-3/4" />
+            </div>
           </div>
-          <div className="h-1 bg-gray-200 rounded-full animate-pulse mt-auto" />
-        </div>
-      ))}
+        ))}
+      </div>
     </div>
   );
 
@@ -254,7 +247,18 @@ export default function Library({ onOpenBook }) {
 
   return (
     <>
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 mt-8">
+      {/* Hero heading */}
+      <div className="mb-10">
+        <p className="text-[10px] font-semibold tracking-[0.18em] uppercase text-muted">/ your library</p>
+        <h1 className="font-serif italic font-semibold text-4xl md:text-[3.25rem] text-ink leading-[1.1] mt-2">
+          your shelf.
+        </h1>
+        <p className="text-sm text-muted mt-2.5">
+          {books.length} {books.length === 1 ? 'book' : 'books'} uploaded
+        </p>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
         {books.map(book => (
           <BookCard
             key={book.id}

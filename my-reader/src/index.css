@@ -9,6 +9,6 @@ body, #root {
   min-height: 100vh;
   font-family: system-ui, 'Segoe UI', Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
-  background: #f9f9f9;
-  color: #111;
+  background: #F4EDE0;
+  color: #2A1A0E;
 }

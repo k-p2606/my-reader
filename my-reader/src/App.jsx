@@ -11,14 +11,11 @@ import EpubReader from './components/EpubReader'
 import PdfReader from './components/PdfReader'
 import DropZone from './components/DropZone'
 
-// ─── Nav item definitions ────────────────────────────────────────────────────
-// Items with `to` are NavLinks. `isSearch` renders as a button handled by AppLayout.
-
 const NAV_ITEMS = [
   {
     to: '/', end: true, label: 'Library',
     icon: (
-      <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25" />
       </svg>
     ),
@@ -26,7 +23,7 @@ const NAV_ITEMS = [
   {
     to: '/lists', label: 'Lists',
     icon: (
-      <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 6.75h12M8.25 12h12M8.25 17.25h12M3.75 6.75h.007v.008H3.75V6.75Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0ZM3.75 12h.007v.008H3.75V12Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm-.375 5.25h.007v.008H3.75v-.008Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" />
       </svg>
     ),
@@ -34,7 +31,7 @@ const NAV_ITEMS = [
   {
     isSearch: true, label: 'Search',
     icon: (
-      <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
       </svg>
     ),
@@ -42,28 +39,24 @@ const NAV_ITEMS = [
   {
     to: '/profile', label: 'Profile',
     icon: (
-      <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" />
       </svg>
     ),
   },
 ]
 
-// ─── Shared nav item renderer ────────────────────────────────────────────────
+// ─── Bottom nav item (mobile only) ───────────────────────────────────────────
 
-function NavItem({ item, onSearch, searchOpen, layout }) {
-  const isBottom = layout === 'bottom'
-  const baseRow = isBottom
-    ? 'flex flex-col items-center gap-0.5 pt-2.5 pb-3 w-full transition-colors'
-    : 'flex flex-col items-center gap-1 rounded-xl py-2.5 px-1 w-full transition-colors'
+function BottomNavItem({ item, onSearch, searchOpen }) {
+  const base = 'flex flex-col items-center gap-0.5 pt-2.5 pb-3 w-full transition-colors'
 
   if (item.isSearch) {
-    const active = searchOpen
-    const cls = isBottom
-      ? `${baseRow} ${active ? 'text-gray-900' : 'text-gray-400'}`
-      : `${baseRow} ${active ? 'bg-gray-100 text-gray-900' : 'text-gray-400 hover:text-gray-700 hover:bg-gray-50'}`
     return (
-      <button onClick={onSearch} className={cls}>
+      <button
+        onClick={onSearch}
+        className={`${base} ${searchOpen ? 'text-rust' : 'text-faint hover:text-muted'}`}
+      >
         {item.icon}
         <span className="text-[10px] font-semibold tracking-wide leading-none">{item.label}</span>
       </button>
@@ -71,13 +64,9 @@ function NavItem({ item, onSearch, searchOpen, layout }) {
   }
 
   return (
-    <NavLink to={item.to} end={item.end} className={isBottom ? 'flex-1' : 'w-full'}>
+    <NavLink to={item.to} end={item.end} className="flex-1">
       {({ isActive }) => (
-        <div className={`${baseRow} ${
-          isActive
-            ? isBottom ? 'text-gray-900' : 'bg-gray-100 text-gray-900'
-            : isBottom ? 'text-gray-400' : 'text-gray-400 hover:text-gray-700 hover:bg-gray-50'
-        }`}>
+        <div className={`${base} ${isActive ? 'text-rust' : 'text-faint hover:text-muted'}`}>
           {item.icon}
           <span className="text-[10px] font-semibold tracking-wide leading-none">{item.label}</span>
         </div>
@@ -86,35 +75,59 @@ function NavItem({ item, onSearch, searchOpen, layout }) {
   )
 }
 
-// ─── Sidebar (desktop) ───────────────────────────────────────────────────────
+// ─── Top nav (desktop) ────────────────────────────────────────────────────────
 
-function Sidebar({ onAddBook, onSearch, searchOpen }) {
+function TopNav({ onAddBook, onSearch, searchOpen }) {
   return (
-    <aside className="hidden md:flex flex-col fixed inset-y-0 left-0 w-20 bg-white border-r border-gray-100 z-20">
-      <div className="flex items-center justify-center h-16 border-b border-gray-100 shrink-0">
-        <span className="text-xs font-bold tracking-tight text-gray-900 text-center leading-tight">
-          My<br />Reader
-        </span>
+    <header className="hidden md:flex items-center justify-between px-8 h-[62px] bg-warm-white border-b border-dust fixed top-0 left-0 right-0 z-20">
+      {/* Logo */}
+      <div className="flex items-center gap-2.5 shrink-0">
+        <div className="w-7 h-7 rounded-full bg-rust flex items-center justify-center shrink-0">
+          <svg className="w-3.5 h-3.5 text-warm-white" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25" />
+          </svg>
+        </div>
+        <span className="text-sm font-semibold text-ink tracking-tight">my reader</span>
       </div>
 
-      <nav className="flex-1 flex flex-col items-center gap-1 py-3 px-2">
-        {NAV_ITEMS.map(item => (
-          <NavItem key={item.label} item={item} onSearch={onSearch} searchOpen={searchOpen} layout="sidebar" />
+      {/* Nav links */}
+      <nav className="flex items-center gap-8">
+        {NAV_ITEMS.filter(i => !i.isSearch).map(item => (
+          <NavLink key={item.label} to={item.to} end={item.end}>
+            {({ isActive }) => (
+              <span className={`text-sm transition-colors pb-[3px] border-b-2 ${
+                isActive
+                  ? 'text-ink font-semibold border-rust'
+                  : 'text-muted border-transparent hover:text-ink'
+              }`}>
+                {item.label}
+              </span>
+            )}
+          </NavLink>
         ))}
       </nav>
 
-      <div className="px-2 pb-4 shrink-0">
+      {/* Right controls */}
+      <div className="flex items-center gap-3 shrink-0">
+        <button
+          onClick={onSearch}
+          className={`flex items-center gap-2 pl-3.5 pr-6 py-2 rounded-full text-[13px] transition-colors ${
+            searchOpen ? 'bg-dust text-ink' : 'bg-parchment hover:bg-dust text-muted hover:text-ink'
+          }`}
+        >
+          <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+          </svg>
+          <span className="text-muted">search a title, an author…</span>
+        </button>
         <button
           onClick={onAddBook}
-          className="w-full flex flex-col items-center gap-1 rounded-xl py-2.5 px-1 text-gray-400 hover:text-gray-700 hover:bg-gray-50 transition-colors"
+          className="text-xs font-semibold text-warm-white bg-ink hover:bg-rust rounded-full px-4 py-2 transition-colors"
         >
-          <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-          </svg>
-          <span className="text-[10px] font-semibold tracking-wide leading-none">Add</span>
+          + add a book
         </button>
       </div>
-    </aside>
+    </header>
   )
 }
 
@@ -122,15 +135,15 @@ function Sidebar({ onAddBook, onSearch, searchOpen }) {
 
 function BottomNav({ onSearch, searchOpen }) {
   return (
-    <nav className="md:hidden fixed bottom-0 inset-x-0 bg-white border-t border-gray-100 z-20 flex">
+    <nav className="md:hidden fixed bottom-0 inset-x-0 bg-warm-white border-t border-dust z-20 flex">
       {NAV_ITEMS.map(item => (
-        <NavItem key={item.label} item={item} onSearch={onSearch} searchOpen={searchOpen} layout="bottom" />
+        <BottomNavItem key={item.label} item={item} onSearch={onSearch} searchOpen={searchOpen} />
       ))}
     </nav>
   )
 }
 
-// ─── Search modal ────────────────────────────────────────────────────────────
+// ─── Search modal ─────────────────────────────────────────────────────────────
 
 function SearchModal({ onClose }) {
   useEffect(() => {
@@ -140,24 +153,24 @@ function SearchModal({ onClose }) {
   }, [onClose])
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-white">
-      <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 shrink-0">
-        <span className="text-sm font-semibold text-gray-900">Search books</span>
+    <div className="fixed inset-0 z-50 flex flex-col bg-warm-white">
+      <div className="flex items-center justify-between px-6 py-4 border-b border-dust shrink-0">
+        <p className="text-[10px] font-semibold tracking-[0.18em] uppercase text-muted">/ Search</p>
         <button
           onClick={onClose}
-          className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors text-xl leading-none"
+          className="w-8 h-8 flex items-center justify-center rounded-lg text-faint hover:text-ink hover:bg-parchment transition-colors text-xl leading-none"
         >
           ×
         </button>
       </div>
-      <div className="flex-1 overflow-y-auto px-5 py-5">
+      <div className="flex-1 overflow-y-auto px-6 py-6">
         <BookSearch />
       </div>
     </div>
   )
 }
 
-// ─── Shared layout ───────────────────────────────────────────────────────────
+// ─── Shared layout ────────────────────────────────────────────────────────────
 
 function AppLayout() {
   const [showDropZone, setShowDropZone] = useState(false)
@@ -165,45 +178,55 @@ function AppLayout() {
   const navigate = useNavigate()
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <Sidebar
+    <div className="min-h-screen bg-cream">
+      <TopNav
         onAddBook={() => setShowDropZone(true)}
-        onSearch={() => setShowSearch(true)}
+        onSearch={() => setShowSearch(v => !v)}
         searchOpen={showSearch}
       />
 
       {/* Mobile header */}
-      <header className="md:hidden bg-white border-b border-gray-100 px-5 py-3.5 flex items-center justify-between">
-        <span className="text-base font-bold tracking-tight text-gray-900">My Reader</span>
+      <header className="md:hidden bg-warm-white border-b border-dust px-5 py-3.5 flex items-center justify-between fixed top-0 inset-x-0 z-20">
+        <div className="flex items-center gap-2">
+          <div className="w-6 h-6 rounded-full bg-rust flex items-center justify-center shrink-0">
+            <svg className="w-3 h-3 text-warm-white" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25" />
+            </svg>
+          </div>
+          <span className="text-sm font-semibold text-ink">my reader</span>
+        </div>
         <button
           onClick={() => setShowDropZone(true)}
-          className="text-sm font-semibold text-white bg-gray-900 hover:bg-gray-700 rounded-lg px-3 py-1.5 transition-colors"
+          className="text-xs font-semibold text-warm-white bg-ink hover:bg-rust rounded-full px-3 py-1.5 transition-colors"
         >
           + Add
         </button>
       </header>
 
-      <div className="md:pl-20">
-        <main className="max-w-3xl mx-auto px-6 py-7 pb-28 md:pb-10">
+      <div className="md:pt-[62px] pt-[54px]">
+        <main className="max-w-5xl mx-auto px-6 py-10 pb-28 md:pb-14">
           <Outlet />
         </main>
       </div>
 
-      <BottomNav onSearch={() => setShowSearch(true)} searchOpen={showSearch} />
+      <BottomNav onSearch={() => setShowSearch(v => !v)} searchOpen={showSearch} />
 
       {showSearch && <SearchModal onClose={() => setShowSearch(false)} />}
 
       {showDropZone && (
         <div
-          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 px-4"
+          className="fixed inset-0 bg-ink/50 flex items-center justify-center z-50 px-4"
           onClick={e => { if (e.target === e.currentTarget) setShowDropZone(false) }}
         >
-          <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-xl">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-base font-semibold text-gray-900">Add a book</h2>
+          <div className="bg-warm-white rounded-2xl p-6 w-full max-w-md shadow-xl border border-dust">
+            <div className="flex items-center justify-between mb-5">
+              <div>
+                <p className="text-[10px] font-semibold tracking-[0.18em] uppercase text-muted">/ add to library</p>
+                <h2 className="text-base font-semibold text-ink mt-0.5">Add a book</h2>
+              </div>
               <button
                 onClick={() => setShowDropZone(false)}
-                className="text-gray-400 hover:text-gray-600 text-2xl leading-none"
+                className="text-faint hover:text-ink text-2xl leading-none transition-colors w-8 h-8 flex items-center justify-center rounded-lg hover:bg-parchment"
               >
                 ×
               </button>
@@ -216,7 +239,7 @@ function AppLayout() {
   )
 }
 
-// ─── Route components ────────────────────────────────────────────────────────
+// ─── Route components ─────────────────────────────────────────────────────────
 
 function LibraryRoute() {
   const navigate = useNavigate()
@@ -255,7 +278,7 @@ function ReaderRoute() {
   )
 }
 
-// ─── Root ────────────────────────────────────────────────────────────────────
+// ─── Root ─────────────────────────────────────────────────────────────────────
 
 export default function App() {
   return (

@@ -19,7 +19,7 @@ function StarRating({ value, onChange }) {
           onMouseLeave={() => setHovered(0)}
           onClick={() => onChange(value === star ? 0 : star)}
           className={`text-2xl leading-none transition-colors ${
-            star <= (hovered || value) ? 'text-yellow-400' : 'text-gray-200 hover:text-yellow-300'
+            star <= (hovered || value) ? 'text-yellow-500' : 'text-dust hover:text-yellow-300'
           }`}
         >
           ★
@@ -29,7 +29,6 @@ function StarRating({ value, onChange }) {
   );
 }
 
-// book has `fileType` → library book (epub/pdf); otherwise → trackedBook
 export default function BookDetail({ book, onClose, onOpen }) {
   const isLibrary = 'fileType' in book;
 
@@ -86,11 +85,11 @@ export default function BookDetail({ book, onClose, onOpen }) {
         dateFinished: book.dateFinished ?? now,
       });
 
-      const finishedList = await db.lists.where('name').equals('Finished / DNF').first();
+      const finishedList = await db.lists.where('name').equals('Finished').first();
       if (!finishedList) return;
 
       const defaultLists = await db.lists
-        .where('name').anyOf(['Want to read', 'Currently reading', 'Finished / DNF'])
+        .where('name').anyOf(['Want to read', 'Currently reading', 'Finished', 'Did Not Finish'])
         .toArray();
       const defaultIds = new Set(defaultLists.map(l => l.id));
 
@@ -107,33 +106,57 @@ export default function BookDetail({ book, onClose, onOpen }) {
 
   async function handleSave() {
     setSaving(true);
-    const wasFinished = status === 'finished' || status === 'dnf';
-    await db.trackedBooks.update(book.id, {
-      status,
-      pagesRead: Number(pagesRead),
-      rating: rating || null,
-      notes,
-      dateFinished: wasFinished
-        ? (book.dateFinished ?? new Date().toISOString())
-        : null,
+    const isFinishedOrDnf = status === 'finished' || status === 'dnf';
+    const statusToListName = {
+      want: 'Want to read',
+      reading: 'Currently reading',
+      finished: 'Finished',
+      dnf: 'Did Not Finish',
+    };
+
+    await db.transaction('rw', db.trackedBooks, db.lists, db.listBooks, async () => {
+      await db.trackedBooks.update(book.id, {
+        status,
+        pagesRead: Number(pagesRead),
+        rating: rating || null,
+        notes,
+        dateFinished: isFinishedOrDnf
+          ? (book.dateFinished ?? new Date().toISOString())
+          : null,
+      });
+
+      const defaultLists = await db.lists
+        .where('name').anyOf(['Want to read', 'Currently reading', 'Finished', 'Did Not Finish'])
+        .toArray();
+      const defaultIds = new Set(defaultLists.map(l => l.id));
+
+      const entries = await db.listBooks.where('trackedBookId').equals(book.id).toArray();
+      const toDelete = entries.filter(lb => defaultIds.has(lb.listId)).map(lb => lb.id);
+      if (toDelete.length) await db.listBooks.bulkDelete(toDelete);
+
+      const targetList = defaultLists.find(l => l.name === statusToListName[status]);
+      if (targetList) {
+        await db.listBooks.add({ listId: targetList.id, trackedBookId: book.id });
+      }
     });
+
     setSaving(false);
     onClose();
   }
 
   return (
     <>
-      <div className="fixed inset-0 bg-black/40 z-40" onClick={onClose} />
+      <div className="fixed inset-0 bg-ink/40 z-40" onClick={onClose} />
 
-      <div className="fixed right-0 top-0 h-full w-full max-w-sm bg-white z-50 shadow-2xl flex flex-col">
+      <div className="fixed right-0 top-0 h-full w-full max-w-sm bg-warm-white z-50 shadow-2xl flex flex-col border-l border-dust">
 
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 shrink-0">
-          <h2 className="text-sm font-semibold text-gray-900">
-            {isLibrary ? 'Library book' : 'Book details'}
-          </h2>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-dust shrink-0">
+          <p className="text-[10px] font-semibold tracking-[0.18em] uppercase text-muted">
+            {isLibrary ? '/ library book' : '/ book details'}
+          </p>
           <button
             onClick={onClose}
-            className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors text-xl leading-none"
+            className="w-7 h-7 flex items-center justify-center rounded-lg text-faint hover:text-ink hover:bg-parchment transition-colors text-xl leading-none"
           >
             ×
           </button>
@@ -143,32 +166,32 @@ export default function BookDetail({ book, onClose, onOpen }) {
 
           {/* Identity */}
           <div className="flex gap-4">
-            <div className="w-20 h-28 shrink-0 rounded-xl overflow-hidden bg-gray-100 flex items-center justify-center">
+            <div className="w-20 h-28 shrink-0 rounded-xl overflow-hidden bg-parchment flex items-center justify-center">
               {!isLibrary && book.coverUrl ? (
                 <img src={book.coverUrl} alt={book.title} className="w-full h-full object-cover" />
               ) : (
-                <svg className="w-8 h-8 text-gray-300" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+                <svg className="w-8 h-8 text-faint" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25" />
                 </svg>
               )}
             </div>
             <div className="flex-1 min-w-0 pt-0.5">
-              <p className="text-sm font-semibold text-gray-900 leading-snug">{book.title}</p>
+              <p className="text-sm font-semibold text-ink leading-snug">{book.title}</p>
               {!isLibrary && book.author && (
-                <p className="text-xs text-gray-500 mt-0.5">{book.author}</p>
+                <p className="text-xs text-muted mt-0.5">{book.author}</p>
               )}
               {isLibrary && (
-                <span className="mt-1.5 inline-block text-xs font-bold uppercase tracking-widest text-gray-400">
+                <span className="mt-1.5 inline-block text-xs font-bold uppercase tracking-widest text-faint">
                   {book.fileType}
                 </span>
               )}
               {!isLibrary && (
-                <p className="text-xs text-gray-400 mt-1.5">
+                <p className="text-xs text-faint mt-1.5">
                   {book.totalPages != null ? `${book.totalPages} pages` : 'Unknown length'}
                 </p>
               )}
               {!isLibrary && book.dateAdded && (
-                <p className="text-xs text-gray-400 mt-0.5">
+                <p className="text-xs text-faint mt-0.5">
                   Added {new Date(book.dateAdded).toLocaleDateString(undefined, {
                     month: 'short', day: 'numeric', year: 'numeric',
                   })}
@@ -177,22 +200,22 @@ export default function BookDetail({ book, onClose, onOpen }) {
             </div>
           </div>
 
-          {/* Large progress bar */}
+          {/* Progress */}
           <div>
             <div className="flex items-baseline justify-between mb-2">
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Progress</p>
-              <p className="text-2xl font-bold text-gray-900">
-                {pct}<span className="text-sm font-semibold text-gray-400 ml-0.5">%</span>
+              <p className="text-[10px] font-semibold text-faint uppercase tracking-[0.15em]">Progress</p>
+              <p className="text-2xl font-bold text-ink">
+                {pct}<span className="text-sm font-semibold text-faint ml-0.5">%</span>
               </p>
             </div>
-            <div className="h-3 w-full bg-gray-100 rounded-full overflow-hidden">
+            <div className="h-2 w-full bg-dust rounded-full overflow-hidden">
               <div
-                className="h-full bg-gray-900 rounded-full transition-all duration-300"
+                className="h-full bg-rust rounded-full transition-all duration-300"
                 style={{ width: `${pct}%` }}
               />
             </div>
             {!isLibrary && canTrackPages && (
-              <p className="text-xs text-gray-400 mt-1.5">{pagesRead} of {book.totalPages} pages</p>
+              <p className="text-xs text-faint mt-1.5">{pagesRead} of {book.totalPages} pages</p>
             )}
           </div>
 
@@ -200,7 +223,7 @@ export default function BookDetail({ book, onClose, onOpen }) {
           {!isLibrary && (
             <>
               <div>
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Status</p>
+                <p className="text-[10px] font-semibold text-faint uppercase tracking-[0.15em] mb-2">Status</p>
                 <div className="grid grid-cols-2 gap-1.5">
                   {STATUS_OPTIONS.map(opt => (
                     <button
@@ -209,8 +232,8 @@ export default function BookDetail({ book, onClose, onOpen }) {
                       className={[
                         'text-xs font-semibold rounded-lg px-3 py-2 transition-colors border',
                         status === opt.value
-                          ? 'bg-gray-900 text-white border-gray-900'
-                          : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300',
+                          ? 'bg-rust text-warm-white border-rust'
+                          : 'bg-cream text-muted border-dust hover:border-dust-dark hover:text-ink',
                       ].join(' ')}
                     >
                       {opt.label}
@@ -220,7 +243,7 @@ export default function BookDetail({ book, onClose, onOpen }) {
               </div>
 
               <div>
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Pages read</p>
+                <p className="text-[10px] font-semibold text-faint uppercase tracking-[0.15em] mb-2">Pages read</p>
                 <div className="flex items-center gap-2">
                   <input
                     type="number"
@@ -228,27 +251,27 @@ export default function BookDetail({ book, onClose, onOpen }) {
                     max={canTrackPages ? book.totalPages : undefined}
                     value={pagesRead}
                     onChange={e => handlePagesChange(e.target.value)}
-                    className="w-20 text-sm text-center border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-gray-900"
+                    className="w-20 text-sm text-center border border-dust bg-cream rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-rust text-ink"
                   />
                   {canTrackPages && (
-                    <p className="text-xs text-gray-400">of {book.totalPages}</p>
+                    <p className="text-xs text-faint">of {book.totalPages}</p>
                   )}
                   <button
                     onClick={handleUpdateProgress}
-                    className="ml-auto text-xs font-semibold text-white bg-gray-900 hover:bg-gray-700 rounded-lg px-3 py-1.5 transition-colors"
+                    className="ml-auto text-xs font-semibold text-warm-white bg-ink hover:bg-rust rounded-lg px-3 py-1.5 transition-colors"
                   >
                     Update
                   </button>
                 </div>
                 {canTrackPages && (
-                  <p className="text-xs text-gray-400 mt-1.5">
+                  <p className="text-xs text-faint mt-1.5">
                     {pct}% · {book.totalPages - Number(pagesRead)} pages left
                   </p>
                 )}
               </div>
 
               <div>
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Rating</p>
+                <p className="text-[10px] font-semibold text-faint uppercase tracking-[0.15em] mb-2">Rating</p>
                 <StarRating
                   value={rating}
                   onChange={v => {
@@ -259,7 +282,7 @@ export default function BookDetail({ book, onClose, onOpen }) {
                 {rating > 0 && (
                   <button
                     onClick={() => setRating(0)}
-                    className="mt-1.5 text-xs text-gray-400 hover:text-gray-600 transition-colors"
+                    className="mt-1.5 text-xs text-faint hover:text-muted transition-colors"
                   >
                     Clear rating
                   </button>
@@ -267,13 +290,13 @@ export default function BookDetail({ book, onClose, onOpen }) {
               </div>
 
               <div>
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Notes</p>
+                <p className="text-[10px] font-semibold text-faint uppercase tracking-[0.15em] mb-2">Notes</p>
                 <textarea
                   value={notes}
                   onChange={e => setNotes(e.target.value)}
                   rows={4}
                   placeholder="Your thoughts on this book…"
-                  className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 resize-none focus:outline-none focus:ring-2 focus:ring-gray-900 placeholder-gray-400"
+                  className="w-full text-sm border border-dust bg-cream rounded-xl px-3 py-2.5 resize-none focus:outline-none focus:ring-2 focus:ring-rust placeholder-faint text-ink"
                 />
               </div>
             </>
@@ -281,21 +304,21 @@ export default function BookDetail({ book, onClose, onOpen }) {
         </div>
 
         {/* Footer */}
-        <div className="px-5 py-4 border-t border-gray-100 shrink-0 flex flex-col gap-2">
+        <div className="px-5 py-4 border-t border-dust shrink-0 flex flex-col gap-2">
           {isLibrary ? (
             <>
               <button
                 onClick={() => onOpen?.(book)}
-                className="w-full text-sm font-semibold text-white bg-gray-900 hover:bg-gray-700 rounded-xl py-2.5 transition-colors"
+                className="w-full text-sm font-semibold text-warm-white bg-ink hover:bg-rust rounded-xl py-2.5 transition-colors"
               >
                 Open book
               </button>
               {confirming ? (
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-gray-500 flex-1">Remove book?</span>
+                  <span className="text-xs text-muted flex-1">Remove book?</span>
                   <button
                     onClick={() => setConfirming(false)}
-                    className="text-xs font-semibold text-gray-500 hover:text-gray-800 px-2 py-1.5 rounded-lg hover:bg-gray-100 transition-colors"
+                    className="text-xs font-semibold text-muted hover:text-ink px-2 py-1.5 rounded-lg hover:bg-parchment transition-colors"
                   >
                     Cancel
                   </button>
@@ -309,7 +332,7 @@ export default function BookDetail({ book, onClose, onOpen }) {
               ) : (
                 <button
                   onClick={() => setConfirming(true)}
-                  className="w-full text-sm font-semibold text-gray-400 hover:text-gray-700 rounded-xl py-2 transition-colors"
+                  className="w-full text-sm font-semibold text-faint hover:text-muted rounded-xl py-2 transition-colors"
                 >
                   Remove from library
                 </button>
@@ -321,7 +344,7 @@ export default function BookDetail({ book, onClose, onOpen }) {
                 <button
                   onClick={handleMarkFinished}
                   disabled={saving}
-                  className="w-full text-sm font-semibold text-white bg-green-600 hover:bg-green-700 rounded-xl py-2.5 transition-colors disabled:opacity-60"
+                  className="w-full text-sm font-semibold text-warm-white bg-[#3A6435] hover:bg-[#2E5029] rounded-xl py-2.5 transition-colors disabled:opacity-60"
                 >
                   Finished
                 </button>
@@ -329,7 +352,7 @@ export default function BookDetail({ book, onClose, onOpen }) {
               <button
                 onClick={handleSave}
                 disabled={saving}
-                className="w-full text-sm font-semibold text-white bg-gray-900 hover:bg-gray-700 rounded-xl py-2.5 transition-colors disabled:opacity-60"
+                className="w-full text-sm font-semibold text-warm-white bg-ink hover:bg-rust rounded-xl py-2.5 transition-colors disabled:opacity-60"
               >
                 {saving ? 'Saving…' : 'Save'}
               </button>

@@ -3,20 +3,21 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import db from '../db';
 import BookDetail from './BookDetail';
 
-const DEFAULT_NAMES = new Set(['Want to read', 'Currently reading', 'Finished / DNF']);
+const DEFAULT_NAMES = new Set(['Want to read', 'Currently reading', 'Finished', 'Did Not Finish']);
 
 const STATUS_LABELS = { want: 'Want to read', reading: 'Reading', finished: 'Finished', dnf: 'DNF' };
 const STATUS_COLORS = {
-  want:     'bg-gray-100 text-gray-500',
-  reading:  'bg-blue-50 text-blue-600',
-  finished: 'bg-green-50 text-green-600',
+  want:     'bg-parchment text-muted',
+  reading:  'bg-rust-soft text-rust',
+  finished: 'bg-[#E8F0E6] text-[#3A6435]',
   dnf:      'bg-red-50 text-red-400',
 };
 
 const LIST_STATUS_MAP = {
   'Want to read':      'want',
   'Currently reading': 'reading',
-  'Finished / DNF':    'finished',
+  'Finished':          'finished',
+  'Did Not Finish':    'dnf',
 };
 
 function MoveMenu({ currentListId, lists, onMove, onClose }) {
@@ -24,15 +25,15 @@ function MoveMenu({ currentListId, lists, onMove, onClose }) {
   return (
     <>
       <div className="fixed inset-0 z-10" onClick={onClose} />
-      <div className="absolute right-0 top-full mt-1.5 z-20 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden min-w-44">
-        <p className="px-4 pt-3 pb-1.5 text-xs font-semibold text-gray-400 uppercase tracking-wide">
+      <div className="absolute right-0 top-full mt-1.5 z-20 bg-warm-white border border-dust rounded-xl shadow-lg overflow-hidden min-w-44">
+        <p className="px-4 pt-3 pb-1.5 text-[10px] font-semibold text-faint uppercase tracking-[0.15em]">
           Move to
         </p>
         {targets.map(list => (
           <button
             key={list.id}
             onClick={() => { onMove(list); onClose(); }}
-            className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors last:pb-3"
+            className="w-full text-left px-4 py-2.5 text-sm text-ink hover:bg-parchment transition-colors last:pb-3"
           >
             {list.name}
           </button>
@@ -53,47 +54,42 @@ function BookRow({ book, lists, onOpen, onMove, onRemove }) {
   return (
     <li
       onClick={onOpen}
-      className="flex items-center gap-4 bg-white border border-gray-100 rounded-xl p-3 shadow-sm cursor-pointer hover:shadow-md hover:border-gray-200 transition-all"
+      className="flex items-center gap-4 bg-warm-white border border-dust rounded-2xl p-3.5 shadow-sm cursor-pointer hover:shadow-md hover:border-dust-dark transition-all"
     >
-      <div className="w-10 h-14 shrink-0 rounded overflow-hidden bg-gray-100 flex items-center justify-center">
+      <div className="w-10 h-14 shrink-0 rounded-lg overflow-hidden bg-parchment flex items-center justify-center">
         {book.coverUrl ? (
           <img src={book.coverUrl} alt={book.title} className="w-full h-full object-cover" />
         ) : (
-          <svg className="w-5 h-5 text-gray-300" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+          <svg className="w-5 h-5 text-faint" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25" />
           </svg>
         )}
       </div>
 
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold text-gray-900 truncate">{book.title}</p>
-        <p className="text-xs text-gray-500 truncate">{book.author}</p>
+        <p className="text-sm font-semibold text-ink truncate">{book.title}</p>
+        <p className="text-xs text-muted truncate">{book.author}</p>
         {canTrackPages ? (
           <div className="mt-1.5 space-y-0.5">
-            <div className="h-1 w-full bg-gray-100 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-gray-800 rounded-full transition-all duration-300"
-                style={{ width: `${pct}%` }}
-              />
+            <div className="h-0.5 w-full bg-dust rounded-full overflow-hidden">
+              <div className="h-full bg-rust rounded-full transition-all duration-300" style={{ width: `${pct}%` }} />
             </div>
-            <p className="text-xs text-gray-400">
-              {book.pagesRead} / {book.totalPages} pages
-            </p>
+            <p className="text-xs text-faint">{book.pagesRead} / {book.totalPages} pages</p>
           </div>
         ) : (
-          <p className="text-xs text-gray-400 mt-0.5">? pages</p>
+          <p className="text-xs text-faint mt-0.5">? pages</p>
         )}
       </div>
 
       <div className="flex items-center gap-1.5 shrink-0">
-        <span className={`text-xs font-semibold rounded-full px-2.5 py-1 ${STATUS_COLORS[book.status] ?? 'bg-gray-100 text-gray-400'}`}>
+        <span className={`text-xs font-semibold rounded-full px-2.5 py-1 ${STATUS_COLORS[book.status] ?? 'bg-parchment text-faint'}`}>
           {STATUS_LABELS[book.status] ?? book.status}
         </span>
 
         <div className="relative">
           <button
             onClick={e => { e.stopPropagation(); setShowMove(v => !v); }}
-            className="p-1 rounded-lg text-gray-300 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+            className="p-1.5 rounded-lg text-faint hover:text-muted hover:bg-parchment transition-colors"
             aria-label="Move to list"
           >
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
@@ -112,7 +108,7 @@ function BookRow({ book, lists, onOpen, onMove, onRemove }) {
 
         <button
           onClick={e => { e.stopPropagation(); onRemove(); }}
-          className="p-1 rounded-lg text-gray-300 hover:text-red-400 hover:bg-red-50 transition-colors"
+          className="p-1.5 rounded-lg text-faint hover:text-rust hover:bg-rust-soft transition-colors"
           aria-label="Remove from list"
         >
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
@@ -147,19 +143,19 @@ function NewListForm({ onDone }) {
         onKeyDown={e => e.key === 'Escape' && onDone()}
         placeholder="List name…"
         maxLength={80}
-        className="flex-1 text-sm px-3 py-1.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 placeholder-gray-400"
+        className="flex-1 text-sm px-3 py-1.5 border border-dust bg-warm-white rounded-lg focus:outline-none focus:ring-2 focus:ring-rust placeholder-faint text-ink"
       />
       <button
         type="submit"
         disabled={!name.trim()}
-        className="text-xs font-semibold text-white bg-gray-900 hover:bg-gray-700 rounded-lg px-3 py-1.5 transition-colors disabled:opacity-40"
+        className="text-xs font-semibold text-warm-white bg-ink hover:bg-rust rounded-lg px-3 py-1.5 transition-colors disabled:opacity-40"
       >
         Add
       </button>
       <button
         type="button"
         onClick={onDone}
-        className="text-xs font-semibold text-gray-500 hover:text-gray-800 rounded-lg px-2 py-1.5 transition-colors"
+        className="text-xs font-semibold text-muted hover:text-ink rounded-lg px-2 py-1.5 transition-colors"
       >
         Cancel
       </button>
@@ -168,8 +164,8 @@ function NewListForm({ onDone }) {
 }
 
 export default function ListsView() {
-  const [selectedBook,       setSelectedBook]       = useState(null);
-  const [showNewForm,        setShowNewForm]        = useState(false);
+  const [selectedBook,        setSelectedBook]        = useState(null);
+  const [showNewForm,         setShowNewForm]         = useState(false);
   const [confirmDeleteListId, setConfirmDeleteListId] = useState(null);
 
   const listsRaw        = useLiveQuery(() => db.lists.toArray(),        []);
@@ -210,9 +206,7 @@ export default function ListsView() {
   async function moveToList(book, targetList) {
     await db.transaction('rw', db.listBooks, db.trackedBooks, async () => {
       const alreadyInTarget = await db.listBooks
-        .where('[listId+trackedBookId]')
-        .equals([targetList.id, book.id])
-        .first();
+        .where('[listId+trackedBookId]').equals([targetList.id, book.id]).first();
 
       await db.listBooks.delete(book._listBookId);
 
@@ -229,20 +223,22 @@ export default function ListsView() {
 
   if (loading) return (
     <div className="space-y-10">
-      <div className="h-6 w-24 bg-gray-200 rounded animate-pulse" />
+      <div className="mb-10">
+        <div className="h-3 w-20 bg-dust rounded-full animate-pulse" />
+        <div className="h-12 w-48 bg-dust rounded-xl animate-pulse mt-3" />
+      </div>
       {Array.from({ length: 3 }).map((_, si) => (
         <div key={si} className="space-y-3">
-          <div className="h-5 w-32 bg-gray-200 rounded animate-pulse" />
+          <div className="h-3 w-32 bg-dust rounded animate-pulse" />
           <ul className="flex flex-col gap-2">
             {Array.from({ length: si === 0 ? 3 : 2 }).map((_, ri) => (
-              <li key={ri} className="flex items-center gap-4 bg-white border border-gray-100 rounded-xl p-3 shadow-sm">
-                <div className="w-10 h-14 shrink-0 rounded bg-gray-200 animate-pulse" />
+              <li key={ri} className="flex items-center gap-4 bg-warm-white border border-dust rounded-2xl p-3.5">
+                <div className="w-10 h-14 shrink-0 rounded-lg bg-dust animate-pulse" />
                 <div className="flex-1 space-y-2">
-                  <div className="h-3.5 bg-gray-200 rounded animate-pulse w-2/3" />
-                  <div className="h-3 bg-gray-200 rounded animate-pulse w-1/3" />
-                  <div className="h-1 bg-gray-200 rounded-full animate-pulse w-full mt-1" />
+                  <div className="h-3.5 bg-dust rounded animate-pulse w-2/3" />
+                  <div className="h-3 bg-dust rounded animate-pulse w-1/3" />
                 </div>
-                <div className="w-16 h-6 bg-gray-200 rounded-full animate-pulse shrink-0" />
+                <div className="w-16 h-6 bg-dust rounded-full animate-pulse shrink-0" />
               </li>
             ))}
           </ul>
@@ -253,41 +249,47 @@ export default function ListsView() {
 
   return (
     <>
-      <div className="space-y-10">
-        <div className="flex items-center justify-between">
-          <h1 className="text-lg font-semibold text-gray-900">My lists</h1>
+      <div className="space-y-12">
+        {/* Hero heading */}
+        <div className="flex items-end justify-between gap-4">
+          <div>
+            <p className="text-[10px] font-semibold tracking-[0.18em] uppercase text-muted">/ your lists</p>
+            <h1 className="font-serif italic font-semibold text-4xl md:text-[3.25rem] text-ink leading-[1.1] mt-2">
+              your lists.
+            </h1>
+          </div>
           {!showNewForm && (
             <button
               onClick={() => setShowNewForm(true)}
-              className="text-xs font-semibold text-gray-600 hover:text-gray-900 border border-gray-200 hover:border-gray-300 rounded-lg px-3 py-1.5 transition-colors"
+              className="text-xs font-semibold text-muted hover:text-ink border border-dust hover:border-dust-dark rounded-full px-4 py-2 transition-colors shrink-0 mb-1"
             >
-              + New list
+              + new list
             </button>
           )}
         </div>
 
-        {showNewForm && (
-          <NewListForm onDone={() => setShowNewForm(false)} />
-        )}
+        {showNewForm && <NewListForm onDone={() => setShowNewForm(false)} />}
 
         {sorted.map(list => {
           const books = booksByListId[list.id] ?? [];
           return (
-            <section key={list.id}>
-              <div className="flex items-center justify-between mb-3">
+            <section key={list.id} className="space-y-3">
+              <div className="flex items-center justify-between">
                 <div className="flex items-baseline gap-2">
-                  <h2 className="text-base font-semibold text-gray-900">{list.name}</h2>
+                  <p className="text-[10px] font-semibold tracking-[0.18em] uppercase text-muted">
+                    {list.name}
+                  </p>
                   {books.length > 0 && (
-                    <span className="text-xs text-gray-400">{books.length}</span>
+                    <span className="text-xs text-faint">{books.length}</span>
                   )}
                 </div>
                 {!DEFAULT_NAMES.has(list.name) && (
                   confirmDeleteListId === list.id ? (
                     <div className="flex items-center gap-2">
-                      <span className="text-xs text-gray-500">Delete list?</span>
+                      <span className="text-xs text-muted">Delete list?</span>
                       <button
                         onClick={() => setConfirmDeleteListId(null)}
-                        className="text-xs font-semibold text-gray-500 hover:text-gray-800 px-2 py-1 rounded-lg hover:bg-gray-100 transition-colors"
+                        className="text-xs font-semibold text-muted hover:text-ink px-2 py-1 rounded-lg hover:bg-parchment transition-colors"
                       >
                         Cancel
                       </button>
@@ -301,7 +303,7 @@ export default function ListsView() {
                   ) : (
                     <button
                       onClick={() => setConfirmDeleteListId(list.id)}
-                      className="p-1 rounded-lg text-gray-300 hover:text-red-400 hover:bg-red-50 transition-colors"
+                      className="p-1.5 rounded-lg text-faint hover:text-rust hover:bg-rust-soft transition-colors"
                       aria-label="Delete list"
                     >
                       <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
@@ -311,8 +313,9 @@ export default function ListsView() {
                   )
                 )}
               </div>
+
               {books.length === 0 ? (
-                <p className="text-sm text-gray-400">No books here yet.</p>
+                <p className="text-sm text-faint italic">No books here yet.</p>
               ) : (
                 <ul className="flex flex-col gap-2">
                   {books.map(book => (

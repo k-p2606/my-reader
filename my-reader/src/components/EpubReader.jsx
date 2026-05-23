@@ -7,7 +7,10 @@ const DEFAULT_SIZE = 100;
 
 const THEMES = {
   light: {
-    body: { background: '#ffffff !important', color: '#111111 !important' },
+    body: { background: '#F4EDE0 !important', color: '#2A1A0E !important' },
+    'p, span, div, li, blockquote': { color: '#2A1A0E !important' },
+    'h1, h2, h3, h4, h5, h6': { color: '#2A1A0E !important' },
+    a: { color: '#8B3525 !important' },
   },
   dark: {
     body: { background: '#1c1c1e !important', color: '#e8e8e8 !important' },
@@ -50,9 +53,27 @@ function IconMoon() {
   );
 }
 
+const THEME_CSS = {
+  light: `body{background:#F4EDE0!important;color:#2A1A0E!important}p,span,div,li,blockquote{color:#2A1A0E!important}h1,h2,h3,h4,h5,h6{color:#2A1A0E!important}a{color:#8B3525!important}`,
+  dark:  `body{background:#1c1c1e!important;color:#e8e8e8!important}p,span,div,li,blockquote{color:#e8e8e8!important}h1,h2,h3,h4,h5,h6{color:#f5f5f5!important}a{color:#6ea8fe!important}`,
+};
+
+function injectThemeCSS(contents, themeName) {
+  try {
+    let el = contents.document.getElementById('__reader_theme__');
+    if (!el) {
+      el = contents.document.createElement('style');
+      el.id = '__reader_theme__';
+      contents.document.head.appendChild(el);
+    }
+    el.textContent = THEME_CSS[themeName] ?? THEME_CSS.light;
+  } catch {}
+}
+
 export default function EpubReader({ bookId, title, fileData, savedCfi, onBack }) {
   const bookRef = useRef(null);
   const renditionRef = useRef(null);
+  const themeRef = useRef('light');
   const [showSettings, setShowSettings] = useState(false);
   const [fontSize, setFontSize] = useState(DEFAULT_SIZE);
   const [theme, setTheme] = useState('light');
@@ -71,6 +92,11 @@ export default function EpubReader({ bookId, title, fileData, savedCfi, onBack }
 
     rendition.themes.register('light', THEMES.light);
     rendition.themes.register('dark', THEMES.dark);
+    rendition.themes.select(themeRef.current);
+
+    rendition.hooks.content.register(contents => {
+      injectThemeCSS(contents, themeRef.current);
+    });
 
     rendition.display(savedCfi || undefined);
 
@@ -99,7 +125,13 @@ export default function EpubReader({ bookId, title, fileData, savedCfi, onBack }
   }, [fileData]);
 
   useEffect(() => {
-    renditionRef.current?.themes.select(theme);
+    themeRef.current = theme;
+    const r = renditionRef.current;
+    if (!r) return;
+    r.themes.select(theme);
+    try {
+      r.getContents().forEach(contents => injectThemeCSS(contents, theme));
+    } catch {}
   }, [theme]);
 
   useEffect(() => {
@@ -132,18 +164,29 @@ export default function EpubReader({ bookId, title, fileData, savedCfi, onBack }
     });
   }
 
-  const settingsBtnCls = 'w-8 h-8 flex items-center justify-center rounded-md bg-gray-700 text-white hover:bg-gray-600 disabled:opacity-30 disabled:cursor-not-allowed transition-colors text-xs font-bold';
+  const settingsBtnCls = isDark
+    ? 'w-8 h-8 flex items-center justify-center rounded-md bg-gray-700 text-white hover:bg-gray-600 disabled:opacity-30 disabled:cursor-not-allowed transition-colors text-xs font-bold'
+    : 'w-8 h-8 flex items-center justify-center rounded-md bg-dust text-ink hover:bg-parchment disabled:opacity-30 disabled:cursor-not-allowed transition-colors text-xs font-bold border border-dust';
 
   return (
-    <div className={`flex flex-col h-screen ${isDark ? 'bg-[#1c1c1e]' : 'bg-white'}`}>
-      <header className="flex items-center justify-between px-6 py-3 bg-gray-900 shrink-0">
-        <button onClick={onBack} className="text-white/70 hover:text-white transition-colors p-1" aria-label="Back to library">
+    <div className={`flex flex-col h-screen ${isDark ? 'bg-[#1c1c1e]' : 'bg-cream'}`}>
+      <header className={`flex items-center justify-between px-6 py-3 shrink-0 border-b ${isDark ? 'bg-gray-900 border-gray-800' : 'bg-warm-white border-dust'}`}>
+        <button
+          onClick={onBack}
+          className={`transition-colors p-1 ${isDark ? 'text-white/70 hover:text-white' : 'text-faint hover:text-ink'}`}
+          aria-label="Back to library"
+        >
           <IconBack />
         </button>
-        <span className="text-white text-sm font-medium truncate max-w-xs">{title}</span>
+        <span className={`text-sm font-medium truncate max-w-xs ${isDark ? 'text-white' : 'text-ink'}`}>
+          {title}
+        </span>
         <button
           onClick={() => setShowSettings(s => !s)}
-          className={`transition-colors p-1 ${showSettings ? 'text-white' : 'text-white/70 hover:text-white'}`}
+          className={`transition-colors p-1 ${isDark
+            ? (showSettings ? 'text-white' : 'text-white/70 hover:text-white')
+            : (showSettings ? 'text-ink' : 'text-faint hover:text-ink')
+          }`}
           aria-label="Settings"
         >
           <IconSettings />
@@ -151,23 +194,23 @@ export default function EpubReader({ bookId, title, fileData, savedCfi, onBack }
       </header>
 
       {showSettings && (
-        <div className="flex items-center gap-6 px-6 py-3 bg-gray-800 border-b border-gray-700 shrink-0">
+        <div className={`flex items-center gap-6 px-6 py-3 border-b shrink-0 ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-parchment border-dust'}`}>
           <div className="flex items-center gap-3">
-            <span className="text-gray-400 text-xs font-medium uppercase tracking-wide">Font</span>
+            <span className={`text-xs font-medium uppercase tracking-wide ${isDark ? 'text-gray-400' : 'text-faint'}`}>Font</span>
             <div className="flex items-center gap-2">
               <button onClick={decreaseFont} disabled={fontSize === FONT_SIZES[0]} className={settingsBtnCls}>A−</button>
-              <span className="text-white text-sm w-10 text-center">{fontSize}%</span>
+              <span className={`text-sm w-10 text-center ${isDark ? 'text-white' : 'text-ink'}`}>{fontSize}%</span>
               <button onClick={increaseFont} disabled={fontSize === FONT_SIZES[FONT_SIZES.length - 1]} className={settingsBtnCls}>A+</button>
             </div>
           </div>
 
-          <div className="w-px h-5 bg-gray-600" />
+          <div className={`w-px h-5 ${isDark ? 'bg-gray-600' : 'bg-dust-dark'}`} />
 
           <div className="flex items-center gap-3">
-            <span className="text-gray-400 text-xs font-medium uppercase tracking-wide">Theme</span>
+            <span className={`text-xs font-medium uppercase tracking-wide ${isDark ? 'text-gray-400' : 'text-faint'}`}>Theme</span>
             <button
               onClick={() => setTheme(t => t === 'light' ? 'dark' : 'light')}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-gray-700 text-white hover:bg-gray-600 transition-colors text-xs font-medium"
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${isDark ? 'bg-gray-700 text-white hover:bg-gray-600' : 'bg-dust text-ink hover:bg-parchment'}`}
             >
               {isDark ? <IconSun /> : <IconMoon />}
               {isDark ? 'Light' : 'Dark'}
@@ -178,28 +221,34 @@ export default function EpubReader({ bookId, title, fileData, savedCfi, onBack }
 
       <div id="viewer" className="flex-1 overflow-hidden" />
 
-      <footer className={`flex items-center justify-between px-6 py-3 shrink-0 border-t ${isDark ? 'bg-[#1c1c1e] border-gray-700' : 'bg-white border-gray-200'}`}>
-        <button onClick={prevPage} className={`text-sm font-medium transition-colors px-4 py-2 rounded-lg ${isDark ? 'text-gray-400 hover:text-white hover:bg-gray-800' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'}`}>
+      <footer className={`flex items-center justify-between px-6 py-3 shrink-0 border-t ${isDark ? 'bg-[#1c1c1e] border-gray-700' : 'bg-warm-white border-dust'}`}>
+        <button
+          onClick={prevPage}
+          className={`text-sm font-medium transition-colors px-4 py-2 rounded-lg ${isDark ? 'text-gray-400 hover:text-white hover:bg-gray-800' : 'text-muted hover:text-ink hover:bg-parchment'}`}
+        >
           ← Previous
         </button>
         <div className="flex flex-col items-center gap-1.5 min-w-24">
           {currentProgress > 0 ? (
             <>
-              <div className={`w-28 h-0.5 rounded-full overflow-hidden ${isDark ? 'bg-gray-700' : 'bg-gray-200'}`}>
+              <div className={`w-28 h-0.5 rounded-full overflow-hidden ${isDark ? 'bg-gray-700' : 'bg-dust'}`}>
                 <div
-                  className={`h-full rounded-full transition-all duration-300 ${isDark ? 'bg-gray-400' : 'bg-gray-500'}`}
+                  className={`h-full rounded-full transition-all duration-300 ${isDark ? 'bg-gray-400' : 'bg-rust'}`}
                   style={{ width: `${Math.round(currentProgress * 100)}%` }}
                 />
               </div>
-              <span className={`text-xs select-none ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+              <span className={`text-xs select-none ${isDark ? 'text-gray-500' : 'text-faint'}`}>
                 {Math.round(currentProgress * 100)}%
               </span>
             </>
           ) : (
-            <span className={`text-xs select-none ${isDark ? 'text-gray-700' : 'text-gray-300'}`}>← → to navigate</span>
+            <span className={`text-xs select-none ${isDark ? 'text-gray-700' : 'text-faint'}`}>← → to navigate</span>
           )}
         </div>
-        <button onClick={nextPage} className={`text-sm font-medium transition-colors px-4 py-2 rounded-lg ${isDark ? 'text-gray-400 hover:text-white hover:bg-gray-800' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'}`}>
+        <button
+          onClick={nextPage}
+          className={`text-sm font-medium transition-colors px-4 py-2 rounded-lg ${isDark ? 'text-gray-400 hover:text-white hover:bg-gray-800' : 'text-muted hover:text-ink hover:bg-parchment'}`}
+        >
           Next →
         </button>
       </footer>
