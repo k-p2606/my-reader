@@ -80,13 +80,29 @@ function GoalRing({ value, max }) {
   );
 }
 
+async function removeFromCurrentlyReading(bookId) {
+  await db.transaction('rw', db.trackedBooks, db.lists, db.listBooks, async () => {
+    await db.trackedBooks.update(bookId, { status: 'want' });
+    const [readingList, wantList] = await Promise.all([
+      db.lists.where('name').equals('Currently reading').first(),
+      db.lists.where('name').equals('Want to read').first(),
+    ]);
+    if (readingList) {
+      await db.listBooks.where('[listId+trackedBookId]').equals([readingList.id, bookId]).delete();
+    }
+    if (wantList) {
+      const already = await db.listBooks.where('[listId+trackedBookId]').equals([wantList.id, bookId]).first();
+      if (!already) await db.listBooks.add({ listId: wantList.id, trackedBookId: bookId });
+    }
+  });
+}
+
 function CurrentlyReadingCard({ book }) {
-  const canTrackPages = book.totalPages != null && book.totalPages > 0;
-  const pct = canTrackPages
+  const canTrackPages = book.totalPages != null && book.totalPages > 0 && book.pagesRead > 0;
+  const pagePct = canTrackPages
     ? Math.min(100, Math.round((book.pagesRead / book.totalPages) * 100))
-    : book.readerProgress != null
-      ? Math.round(book.readerProgress * 100)
-      : null;
+    : null;
+  const pct = pagePct ?? (book.readerProgress != null ? Math.round(book.readerProgress * 100) : null);
 
   return (
     <div className="flex items-center gap-3 bg-warm-white border border-dust rounded-2xl p-3.5">
@@ -115,9 +131,20 @@ function CurrentlyReadingCard({ book }) {
           <p className="text-xs text-faint mt-1">No progress tracked yet</p>
         )}
       </div>
-      {pct !== null && (
-        <span className="text-sm font-bold text-ink tabular-nums shrink-0">{pct}%</span>
-      )}
+      <div className="flex items-center gap-2 shrink-0">
+        {pct !== null && (
+          <span className="text-sm font-bold text-ink tabular-nums">{pct}%</span>
+        )}
+        <button
+          onClick={() => removeFromCurrentlyReading(book.id)}
+          className="p-1.5 rounded-lg text-faint hover:text-rust hover:bg-rust-soft transition-colors"
+          aria-label="Remove from currently reading"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
     </div>
   );
 }

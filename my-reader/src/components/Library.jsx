@@ -124,7 +124,8 @@ function BookCard({ book, linkedTracked, onClick }) {
   const [showTrack,  setShowTrack]  = useState(false);
 
   const coverColor = COVER_COLORS[hashTitle(book.title) % COVER_COLORS.length];
-  const progress = book.progress > 0 ? Math.min(100, Math.round(book.progress * 100)) : 0;
+  const coverUrl   = linkedTracked?.coverUrl ?? null;
+  const progress   = book.progress > 0 ? Math.min(100, Math.round(book.progress * 100)) : 0;
 
   function handleDelete(e) {
     e.stopPropagation();
@@ -137,22 +138,37 @@ function BookCard({ book, linkedTracked, onClick }) {
         {/* Cover */}
         <div
           onClick={!confirming ? onClick : undefined}
-          className="relative flex flex-col justify-end p-4 select-none"
-          style={{ background: coverColor, minHeight: '195px' }}
+          className="relative select-none aspect-2/3 overflow-hidden"
+          style={!coverUrl ? { background: coverColor } : undefined}
         >
-          <div>
-            <p className="font-serif italic text-white/90 text-sm leading-snug line-clamp-4">
-              {book.title}
-            </p>
-            <p className="text-[9px] font-bold tracking-[0.15em] uppercase text-white/40 mt-1.5">
-              {book.fileType}
-            </p>
-          </div>
+          {coverUrl ? (
+            <img src={coverUrl} alt={book.title} className="w-full h-full object-cover" />
+          ) : (
+            <div className="absolute inset-0 flex flex-col justify-end p-4">
+              <p className="font-serif italic text-white/90 text-sm leading-snug line-clamp-4">
+                {book.title}
+              </p>
+              <p className="text-[9px] font-bold tracking-[0.15em] uppercase text-white/40 mt-1.5">
+                {book.fileType}
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Title + author */}
+        <div
+          onClick={!confirming ? onClick : undefined}
+          className="px-3 pt-2.5 pb-1 bg-warm-white"
+        >
+          <p className="text-sm font-semibold text-ink leading-snug line-clamp-2">{book.title}</p>
+          {(linkedTracked?.author || book.author) && (
+            <p className="text-xs text-muted mt-0.5 truncate">{linkedTracked?.author ?? book.author}</p>
+          )}
         </div>
 
         {/* Progress bar */}
         {progress > 0 && (
-          <div className="px-3.5 pt-3 bg-warm-white">
+          <div className="px-3 pt-2 bg-warm-white">
             <div className="h-0.5 w-full bg-dust rounded-full overflow-hidden">
               <div
                 className="h-full bg-rust rounded-full transition-all duration-300"
@@ -166,7 +182,7 @@ function BookCard({ book, linkedTracked, onClick }) {
         {confirming ? (
           <div
             onClick={e => e.stopPropagation()}
-            className="flex items-center gap-2 px-3.5 py-3 bg-warm-white"
+            className="flex items-center gap-2 px-3 py-2.5 bg-warm-white"
           >
             <span className="text-xs text-muted flex-1">Remove?</span>
             <button
@@ -183,7 +199,7 @@ function BookCard({ book, linkedTracked, onClick }) {
             </button>
           </div>
         ) : (
-          <div className="flex items-center justify-between px-3.5 py-3 bg-warm-white">
+          <div className="flex items-center justify-between px-3 py-2.5 bg-warm-white">
             <button
               onClick={e => { e.stopPropagation(); setShowTrack(true); }}
               className={`text-[11px] font-semibold rounded-full px-2.5 py-0.5 transition-colors ${

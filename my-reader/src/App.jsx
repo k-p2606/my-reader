@@ -90,8 +90,8 @@ function TopNav({ onAddBook, onSearch, searchOpen }) {
         <span className="text-sm font-semibold text-ink tracking-tight">my reader</span>
       </div>
 
-      {/* Nav links */}
-      <nav className="flex items-center gap-8">
+      {/* Nav links — centered relative to the full header */}
+      <nav className="absolute left-1/2 -translate-x-1/2 flex items-center gap-8">
         {NAV_ITEMS.filter(i => !i.isSearch).map(item => (
           <NavLink key={item.label} to={item.to} end={item.end}>
             {({ isActive }) => (
@@ -263,6 +263,7 @@ function ReaderRoute() {
         title={book.title}
         fileData={book.fileData}
         savedPage={book.lastPosition}
+        trackedBookId={book.trackedBookId}
         onBack={onBack}
       />
     )
@@ -273,6 +274,7 @@ function ReaderRoute() {
       title={book.title}
       fileData={book.fileData}
       savedCfi={book.lastPosition}
+      trackedBookId={book.trackedBookId}
       onBack={onBack}
     />
   )

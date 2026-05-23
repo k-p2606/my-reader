@@ -116,31 +116,49 @@ function SearchPanel({ book, onClose }) {
 
   async function linkToExisting(trackedId) {
     await db.books.update(book.id, { trackedBookId: trackedId });
+    const trackedUpdates = {};
+    if (book.totalPages) trackedUpdates.totalPages = book.totalPages;
+    if (book.progress > 0) trackedUpdates.readerProgress = book.progress;
+    if (Object.keys(trackedUpdates).length > 0) {
+      await db.trackedBooks.update(trackedId, trackedUpdates);
+    }
     onClose();
   }
 
   async function linkToOL(olBook) {
     setLinking(olBook.olKey);
     try {
+      const filePages = book.totalPages || null;
       let tracked = await db.trackedBooks.where('olKey').equals(olBook.olKey).first();
-      if (!tracked) {
-        const id = await db.trackedBooks.add({
-          olKey:       olBook.olKey,
-          title:       olBook.title,
-          author:      olBook.author,
-          coverUrl:    olBook.coverUrl,
-          totalPages:  olBook.totalPages,
-          pagesRead:   0,
-          status:      'reading',
-          rating:      null,
-          notes:       '',
-          dateAdded:   new Date().toISOString(),
-          dateFinished: null,
-        });
-        await db.books.update(book.id, { trackedBookId: id });
-      } else {
-        await db.books.update(book.id, { trackedBookId: tracked.id });
-      }
+
+      await db.transaction('rw', db.trackedBooks, db.lists, db.listBooks, db.books, async () => {
+        if (!tracked) {
+          const id = await db.trackedBooks.add({
+            olKey:          olBook.olKey,
+            title:          olBook.title,
+            author:         olBook.author,
+            coverUrl:       olBook.coverUrl,
+            totalPages:     filePages ?? olBook.totalPages,
+            pagesRead:      0,
+            readerProgress: book.progress > 0 ? book.progress : null,
+            status:         'reading',
+            rating:         null,
+            notes:          '',
+            dateAdded:      new Date().toISOString(),
+            dateFinished:   null,
+          });
+          await db.books.update(book.id, { trackedBookId: id });
+          const readingList = await db.lists.where('name').equals('Currently reading').first();
+          if (readingList) {
+            await db.listBooks.add({ listId: readingList.id, trackedBookId: id });
+          }
+        } else {
+          await db.books.update(book.id, { trackedBookId: tracked.id });
+          if (filePages) {
+            await db.trackedBooks.update(tracked.id, { totalPages: filePages });
+          }
+        }
+      });
     } finally {
       setLinking(null);
       onClose();

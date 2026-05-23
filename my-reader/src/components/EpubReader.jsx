@@ -70,13 +70,14 @@ function injectThemeCSS(contents, themeName) {
   } catch {}
 }
 
-export default function EpubReader({ bookId, title, fileData, savedCfi, onBack }) {
-  const bookRef = useRef(null);
-  const renditionRef = useRef(null);
-  const themeRef = useRef('light');
+export default function EpubReader({ bookId, title, fileData, savedCfi, trackedBookId, onBack }) {
+  const bookRef        = useRef(null);
+  const renditionRef   = useRef(null);
+  const themeRef       = useRef('light');
+  const saveTimerRef   = useRef(null);
   const [showSettings, setShowSettings] = useState(false);
-  const [fontSize, setFontSize] = useState(DEFAULT_SIZE);
-  const [theme, setTheme] = useState('light');
+  const [fontSize,     setFontSize]     = useState(DEFAULT_SIZE);
+  const [theme,        setTheme]        = useState('light');
   const [currentProgress, setCurrentProgress] = useState(0);
 
   const isDark = theme === 'dark';
@@ -87,7 +88,12 @@ export default function EpubReader({ bookId, title, fileData, savedCfi, onBack }
     const book = ePub(fileData);
     bookRef.current = book;
 
-    const rendition = book.renderTo('viewer', { width: '100%', height: '100%' });
+    const rendition = book.renderTo('viewer', {
+      width:          '100%',
+      height:         '100%',
+      spread:         'auto',   // two pages on wide screens, one on narrow
+      minSpreadWidth: 768,      // matches Tailwind's md breakpoint
+    });
     renditionRef.current = rendition;
 
     rendition.themes.register('light', THEMES.light);
@@ -100,28 +106,35 @@ export default function EpubReader({ bookId, title, fileData, savedCfi, onBack }
 
     rendition.display(savedCfi || undefined);
 
-    rendition.on('relocated', async (location) => {
+    rendition.on('relocated', (location) => {
       const cfi = location.start.cfi;
+
+      // Save position immediately so resume always works
       db.books.update(bookId, { lastPosition: cfi });
 
       const total = book.spine.items.length;
       if (total > 0) {
-        const chapterIdx = location.start.index;
-        const pageInChapter = location.start.displayed?.page ?? 1;
-        const totalInChapter = location.start.displayed?.total || 1;
+        const chapterIdx      = location.start.index;
+        const pageInChapter   = location.start.displayed?.page ?? 1;
+        const totalInChapter  = location.start.displayed?.total || 1;
         const pct = Math.min(1, (chapterIdx + pageInChapter / totalInChapter) / total);
         setCurrentProgress(pct);
-        if (pct > 0) {
-          db.books.update(bookId, { progress: pct });
-          const tracked = await db.trackedBooks.where('title').equals(title).first();
-          if (tracked) {
-            db.trackedBooks.update(tracked.id, { readerProgress: pct });
+
+        // Debounce the heavier progress writes — 1.5 s after last page turn
+        clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = setTimeout(() => {
+          if (pct > 0) {
+            db.books.update(bookId, { progress: pct });
+            if (trackedBookId) db.trackedBooks.update(trackedBookId, { readerProgress: pct });
           }
-        }
+        }, 1500);
       }
     });
 
-    return () => { book.destroy(); };
+    return () => {
+      clearTimeout(saveTimerRef.current);
+      book.destroy();
+    };
   }, [fileData]);
 
   useEffect(() => {
@@ -219,7 +232,15 @@ export default function EpubReader({ bookId, title, fileData, savedCfi, onBack }
         </div>
       )}
 
-      <div id="viewer" className="flex-1 overflow-hidden" />
+      {/* Viewer — darker surround so pages read as distinct paper sheets */}
+      <div className={`flex-1 overflow-hidden relative ${isDark ? 'bg-[#0d0d0d]' : 'bg-[#BDA882]'}`}>
+        <div id="viewer" className="w-full h-full" />
+        {/* Spine — visible only when epubjs is in two-page spread mode */}
+        <div
+          className={`hidden md:block absolute inset-y-0 left-1/2 w-px pointer-events-none z-10
+            ${isDark ? 'bg-white/10' : 'bg-black/15'}`}
+        />
+      </div>
 
       <footer className={`flex items-center justify-between px-6 py-3 shrink-0 border-t ${isDark ? 'bg-[#1c1c1e] border-gray-700' : 'bg-warm-white border-dust'}`}>
         <button

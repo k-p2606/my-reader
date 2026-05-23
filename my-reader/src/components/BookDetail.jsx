@@ -37,7 +37,12 @@ export default function BookDetail({ book, onClose, onOpen }) {
   const [pagesRead, setPagesRead] = useState(book.pagesRead ?? 0);
   const [rating,    setRating]    = useState(book.rating    ?? 0);
   const [notes,     setNotes]     = useState(book.notes     ?? '');
-  const [saving,    setSaving]    = useState(false);
+  const [saving,     setSaving]    = useState(false);
+  const [editTitle,  setEditTitle]  = useState(book.title  ?? '');
+  const [editAuthor, setEditAuthor] = useState(book.author ?? '');
+  const [editingMeta, setEditingMeta] = useState(false);
+
+  const metaChanged = editTitle.trim() !== (book.title ?? '') || editAuthor.trim() !== (book.author ?? '');
 
   const notesFirstRender = useRef(true);
   useEffect(() => {
@@ -176,14 +181,55 @@ export default function BookDetail({ book, onClose, onOpen }) {
               )}
             </div>
             <div className="flex-1 min-w-0 pt-0.5">
-              <p className="text-sm font-semibold text-ink leading-snug">{book.title}</p>
-              {!isLibrary && book.author && (
-                <p className="text-xs text-muted mt-0.5">{book.author}</p>
-              )}
-              {isLibrary && (
-                <span className="mt-1.5 inline-block text-xs font-bold uppercase tracking-widest text-faint">
-                  {book.fileType}
-                </span>
+              {isLibrary ? (
+                editingMeta ? (
+                  <div className="space-y-1.5">
+                    <input
+                      autoFocus
+                      value={editTitle}
+                      onChange={e => setEditTitle(e.target.value)}
+                      className="w-full text-sm font-semibold text-ink bg-cream border border-dust rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-rust"
+                      placeholder="Book title…"
+                    />
+                    <input
+                      value={editAuthor}
+                      onChange={e => setEditAuthor(e.target.value)}
+                      className="w-full text-xs text-muted bg-cream border border-dust rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-rust placeholder-faint"
+                      placeholder="Author (optional)…"
+                    />
+                    <span className="inline-block text-xs font-bold uppercase tracking-widest text-faint">
+                      {book.fileType}
+                    </span>
+                  </div>
+                ) : (
+                  <div className="flex items-start gap-1.5 group">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-ink leading-snug">{editTitle || book.title}</p>
+                      {(editAuthor || book.author) && (
+                        <p className="text-xs text-muted mt-0.5">{editAuthor || book.author}</p>
+                      )}
+                      <span className="inline-block text-xs font-bold uppercase tracking-widest text-faint mt-1">
+                        {book.fileType}
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => setEditingMeta(true)}
+                      className="shrink-0 mt-0.5 p-1 rounded-md text-faint hover:text-ink hover:bg-parchment transition-colors opacity-0 group-hover:opacity-100"
+                      aria-label="Edit title and author"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125" />
+                      </svg>
+                    </button>
+                  </div>
+                )
+              ) : (
+                <>
+                  <p className="text-sm font-semibold text-ink leading-snug">{book.title}</p>
+                  {book.author && (
+                    <p className="text-xs text-muted mt-0.5">{book.author}</p>
+                  )}
+                </>
               )}
               {!isLibrary && (
                 <p className="text-xs text-faint mt-1.5">
@@ -307,6 +353,20 @@ export default function BookDetail({ book, onClose, onOpen }) {
         <div className="px-5 py-4 border-t border-dust shrink-0 flex flex-col gap-2">
           {isLibrary ? (
             <>
+              {metaChanged && (
+                <button
+                  onClick={async () => {
+                    const title = editTitle.trim() || book.title;
+                    const author = editAuthor.trim() || null;
+                    await db.books.update(book.id, { title, author });
+                    setEditingMeta(false);
+                    onClose();
+                  }}
+                  className="w-full text-sm font-semibold text-warm-white bg-rust hover:bg-rust-hover rounded-xl py-2.5 transition-colors"
+                >
+                  Save changes
+                </button>
+              )}
               <button
                 onClick={() => onOpen?.(book)}
                 className="w-full text-sm font-semibold text-warm-white bg-ink hover:bg-rust rounded-xl py-2.5 transition-colors"

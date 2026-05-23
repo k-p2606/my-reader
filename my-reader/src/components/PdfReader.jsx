@@ -5,6 +5,7 @@ import db from '../db';
 pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
 
 const ZOOM_STEPS = [50, 75, 100, 125, 150, 200];
+const CACHE_MAX = 5;
 
 function IconBack() {
   return (
@@ -39,16 +40,27 @@ function IconMoon() {
   );
 }
 
-export default function PdfReader({ bookId, title, fileData, savedPage, onBack }) {
-  const containerRef = useRef(null);
-  const canvasRef = useRef(null);
-  const pdfRef = useRef(null);
-  const [pageNum, setPageNum] = useState(1);
-  const [totalPages, setTotalPages] = useState(0);
-  const [showSettings, setShowSettings] = useState(false);
-  const [darkMode, setDarkMode] = useState(false);
-  const [zoom, setZoom] = useState(100);
+export default function PdfReader({ bookId, title, fileData, savedPage, trackedBookId, onBack }) {
+  const canvasRef      = useRef(null);
+  const pdfRef         = useRef(null);
+  const renderTaskRef  = useRef(null);  // current pdfjs RenderTask (cancellable)
+  const pageCacheRef   = useRef(new Map()); // pageNum → offscreen canvas
+  const zoomRef        = useRef(100);
+  const saveTimerRef   = useRef(null);
+  const pageNumRef     = useRef(1);
+  const totalPagesRef  = useRef(0);
 
+  const [pageNum,      setPageNum]      = useState(1);
+  const [totalPages,   setTotalPages]   = useState(0);
+  const [showSettings, setShowSettings] = useState(false);
+  const [darkMode,     setDarkMode]     = useState(false);
+  const [zoom,         setZoom]         = useState(100);
+
+  // Keep refs in sync so event listeners always see fresh values
+  pageNumRef.current    = pageNum;
+  totalPagesRef.current = totalPages;
+
+  // ── Load PDF ──────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!fileData) return;
     let cancelled = false;
@@ -60,83 +72,153 @@ export default function PdfReader({ bookId, title, fileData, savedPage, onBack }
       setTotalPages(pdf.numPages);
       const startPage = savedPage && savedPage <= pdf.numPages ? savedPage : 1;
       setPageNum(startPage);
-      db.books.update(bookId, {
-        totalPages: pdf.numPages,
-        progress: startPage / pdf.numPages,
-      });
+      db.books.update(bookId, { totalPages: pdf.numPages, progress: startPage / pdf.numPages });
+      if (trackedBookId) db.trackedBooks.update(trackedBookId, { totalPages: pdf.numPages });
     }
 
     loadPdf();
     return () => { cancelled = true; };
   }, [fileData]);
 
+  // ── Page rendering with cache ─────────────────────────────────────────────
   useEffect(() => {
-    if (!pdfRef.current || !canvasRef.current) return;
-    let cancelled = false;
+    if (!pdfRef.current || !canvasRef.current || totalPages === 0) return;
 
-    async function renderPage() {
-      const page = await pdfRef.current.getPage(pageNum);
-      if (cancelled) return;
+    const scale = 1.5 * (zoom / 100);
+    const cache = pageCacheRef.current;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
 
-      const viewport = page.getViewport({ scale: 1.5 * (zoom / 100) });
-      const canvas = canvasRef.current;
-      const ctx = canvas.getContext('2d');
-
-      canvas.width = viewport.width;
-      canvas.height = viewport.height;
-
-      await page.render({ canvasContext: ctx, viewport }).promise;
+    // Cancel any in-progress render to avoid wasted GPU work
+    if (renderTaskRef.current) {
+      renderTaskRef.current.cancel();
+      renderTaskRef.current = null;
     }
 
-    renderPage();
-    return () => { cancelled = true; };
+    async function show() {
+      // Cache hit → paint instantly from pre-rendered canvas
+      if (cache.has(pageNum)) {
+        const src = cache.get(pageNum);
+        canvas.width  = src.width;
+        canvas.height = src.height;
+        ctx.drawImage(src, 0, 0);
+        prerender(pageNum, scale); // warm up adjacent pages in background
+        return;
+      }
+
+      // Cache miss → render directly into the visible canvas
+      try {
+        const page = await pdfRef.current.getPage(pageNum);
+        const viewport = page.getViewport({ scale });
+        canvas.width  = viewport.width;
+        canvas.height = viewport.height;
+
+        const task = page.render({ canvasContext: ctx, viewport });
+        renderTaskRef.current = task;
+        await task.promise;
+        renderTaskRef.current = null;
+
+        // Copy the result into cache for instant recall later
+        const cached = document.createElement('canvas');
+        cached.width  = canvas.width;
+        cached.height = canvas.height;
+        cached.getContext('2d').drawImage(canvas, 0, 0);
+        cacheSet(pageNum, cached);
+
+        prerender(pageNum, scale);
+      } catch {
+        // RenderingCancelledException — next render is already queued
+      }
+    }
+
+    show();
   }, [pageNum, totalPages, zoom]);
 
+  function cacheSet(key, value) {
+    const cache = pageCacheRef.current;
+    if (cache.size >= CACHE_MAX) cache.delete(cache.keys().next().value);
+    cache.set(key, value);
+  }
+
+  async function prerender(currentPage, scale) {
+    const cache = pageCacheRef.current;
+    const total = totalPagesRef.current;
+    const pdf   = pdfRef.current;
+    if (!pdf) return;
+
+    // Render adjacent pages that aren't cached yet (fire-and-forget)
+    for (const n of [currentPage + 1, currentPage - 1]) {
+      if (n < 1 || n > total || cache.has(n)) continue;
+      try {
+        const page     = await pdf.getPage(n);
+        const viewport = page.getViewport({ scale });
+        const offscreen = document.createElement('canvas');
+        offscreen.width  = viewport.width;
+        offscreen.height = viewport.height;
+        await page.render({ canvasContext: offscreen.getContext('2d'), viewport }).promise;
+        cacheSet(n, offscreen);
+      } catch {}
+    }
+  }
+
+  // Clear stale cache when zoom changes (cached pages are at the old scale)
+  useEffect(() => {
+    zoomRef.current = zoom;
+    pageCacheRef.current.clear();
+  }, [zoom]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      clearTimeout(saveTimerRef.current);
+      if (renderTaskRef.current) renderTaskRef.current.cancel();
+    };
+  }, []);
+
+  // ── Debounced DB save ─────────────────────────────────────────────────────
+  function scheduleSave(page, total) {
+    clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      const progress = page / total;
+      db.books.update(bookId, { lastPosition: page, progress });
+      if (trackedBookId) {
+        db.trackedBooks.update(trackedBookId, { pagesRead: page, readerProgress: progress });
+      }
+    }, 1500);
+  }
+
+  function goTo(next) {
+    setPageNum(next);
+    scheduleSave(next, totalPagesRef.current);
+  }
+
   function prevPage() {
-    setPageNum(n => {
-      const next = Math.max(1, n - 1);
-      db.books.update(bookId, { lastPosition: next, progress: next / totalPages });
-      return next;
-    });
+    const next = Math.max(1, pageNumRef.current - 1);
+    if (next !== pageNumRef.current) goTo(next);
   }
 
   function nextPage() {
-    setPageNum(n => {
-      const next = Math.min(totalPages, n + 1);
-      db.books.update(bookId, { lastPosition: next, progress: next / totalPages });
-      return next;
-    });
+    const next = Math.min(totalPagesRef.current, pageNumRef.current + 1);
+    if (next !== pageNumRef.current) goTo(next);
   }
 
-  useEffect(() => {
-    if (!totalPages) return;
-    db.trackedBooks.where('title').equals(title).first().then(tracked => {
-      if (tracked) db.trackedBooks.update(tracked.id, { pagesRead: pageNum });
-    });
-  }, [pageNum, totalPages]);
-
   function zoomOut() {
-    setZoom(z => {
-      const idx = ZOOM_STEPS.indexOf(z);
-      return idx > 0 ? ZOOM_STEPS[idx - 1] : z;
-    });
+    setZoom(z => { const i = ZOOM_STEPS.indexOf(z); return i > 0 ? ZOOM_STEPS[i - 1] : z; });
   }
 
   function zoomIn() {
-    setZoom(z => {
-      const idx = ZOOM_STEPS.indexOf(z);
-      return idx < ZOOM_STEPS.length - 1 ? ZOOM_STEPS[idx + 1] : z;
-    });
+    setZoom(z => { const i = ZOOM_STEPS.indexOf(z); return i < ZOOM_STEPS.length - 1 ? ZOOM_STEPS[i + 1] : z; });
   }
 
+  // Keyboard navigation — uses refs so this effect never needs to re-run
   useEffect(() => {
     function onKeyDown(e) {
-      if (e.key === 'ArrowLeft') prevPage();
+      if (e.key === 'ArrowLeft')  prevPage();
       if (e.key === 'ArrowRight') nextPage();
     }
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [totalPages]);
+  }, []);
 
   const pct = totalPages > 0 ? Math.round((pageNum / totalPages) * 100) : 0;
 
@@ -199,7 +281,7 @@ export default function PdfReader({ bookId, title, fileData, savedPage, onBack }
         </div>
       )}
 
-      <div ref={containerRef} className="flex-1 overflow-auto py-6 px-4">
+      <div className="flex-1 overflow-auto py-6 px-4">
         <canvas
           ref={canvasRef}
           className="block mx-auto shadow-lg bg-white"

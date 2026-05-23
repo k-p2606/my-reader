@@ -46,10 +46,12 @@ function MoveMenu({ currentListId, lists, onMove, onClose }) {
 function BookRow({ book, lists, onOpen, onMove, onRemove }) {
   const [showMove, setShowMove] = useState(false);
 
-  const canTrackPages = book.totalPages != null && book.totalPages > 0;
+  const canTrackPages = book.totalPages != null && book.totalPages > 0 && book.pagesRead > 0;
   const pct = canTrackPages
     ? Math.min(100, Math.round((book.pagesRead / book.totalPages) * 100))
-    : 0;
+    : book.readerProgress != null
+      ? Math.round(book.readerProgress * 100)
+      : 0;
 
   return (
     <li
@@ -69,15 +71,17 @@ function BookRow({ book, lists, onOpen, onMove, onRemove }) {
       <div className="flex-1 min-w-0">
         <p className="text-sm font-semibold text-ink truncate">{book.title}</p>
         <p className="text-xs text-muted truncate">{book.author}</p>
-        {canTrackPages ? (
+        {pct > 0 ? (
           <div className="mt-1.5 space-y-0.5">
             <div className="h-0.5 w-full bg-dust rounded-full overflow-hidden">
               <div className="h-full bg-rust rounded-full transition-all duration-300" style={{ width: `${pct}%` }} />
             </div>
-            <p className="text-xs text-faint">{book.pagesRead} / {book.totalPages} pages</p>
+            <p className="text-xs text-faint">
+              {canTrackPages ? `${book.pagesRead} / ${book.totalPages} pages` : `${pct}%`}
+            </p>
           </div>
         ) : (
-          <p className="text-xs text-faint mt-0.5">? pages</p>
+          <p className="text-xs text-faint mt-0.5">{book.totalPages ? `${book.totalPages} pages` : 'No progress yet'}</p>
         )}
       </div>
 
