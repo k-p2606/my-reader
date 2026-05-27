@@ -70,11 +70,37 @@ function injectThemeCSS(contents, themeName) {
   } catch {}
 }
 
+// Directly patches all rendered epub iframes — works even when getContents() returns empty.
+function applyThemeToViewerIframes(themeName) {
+  try {
+    document.querySelectorAll('#viewer iframe').forEach(iframe => {
+      try {
+        const doc = iframe.contentDocument ?? iframe.contentWindow?.document;
+        if (!doc?.head) return;
+        let el = doc.getElementById('__reader_theme__');
+        if (!el) {
+          el = doc.createElement('style');
+          el.id = '__reader_theme__';
+          doc.head.appendChild(el);
+        }
+        el.textContent = THEME_CSS[themeName] ?? THEME_CSS.light;
+      } catch {}
+    });
+  } catch {}
+}
+
 export default function EpubReader({ bookId, title, fileData, savedCfi, trackedBookId, onBack }) {
-  const bookRef        = useRef(null);
-  const renditionRef   = useRef(null);
-  const themeRef       = useRef('light');
-  const saveTimerRef   = useRef(null);
+  const bookRef          = useRef(null);
+  const renditionRef     = useRef(null);
+  const themeRef         = useRef('light');
+  const saveTimerRef     = useRef(null);
+  const currentCfiRef    = useRef(null); // set by relocated; null until first page loads
+  // Capture initial values in refs so DB updates (which cause useLiveQuery to
+  // return new object references) don't trigger the init effect to re-run.
+  const fileDataRef      = useRef(fileData);
+  const savedCfiRef      = useRef(savedCfi);
+  const bookIdRef        = useRef(bookId);
+  const trackedBookIdRef = useRef(trackedBookId);
   const [showSettings, setShowSettings] = useState(false);
   const [fontSize,     setFontSize]     = useState(DEFAULT_SIZE);
   const [theme,        setTheme]        = useState('light');
@@ -83,9 +109,10 @@ export default function EpubReader({ bookId, title, fileData, savedCfi, trackedB
   const isDark = theme === 'dark';
 
   useEffect(() => {
-    if (!fileData) return;
+    const data = fileDataRef.current;
+    if (!data) return;
 
-    const book = ePub(fileData);
+    const book = ePub(data);
     bookRef.current = book;
 
     const rendition = book.renderTo('viewer', {
@@ -104,13 +131,13 @@ export default function EpubReader({ bookId, title, fileData, savedCfi, trackedB
       injectThemeCSS(contents, themeRef.current);
     });
 
-    rendition.display(savedCfi || undefined);
+    rendition.display(savedCfiRef.current || undefined);
 
     rendition.on('relocated', (location) => {
       const cfi = location.start.cfi;
+      currentCfiRef.current = cfi;
 
-      // Save position immediately so resume always works
-      db.books.update(bookId, { lastPosition: cfi });
+      db.books.update(bookIdRef.current, { lastPosition: cfi });
 
       const total = book.spine.items.length;
       if (total > 0) {
@@ -120,12 +147,11 @@ export default function EpubReader({ bookId, title, fileData, savedCfi, trackedB
         const pct = Math.min(1, (chapterIdx + pageInChapter / totalInChapter) / total);
         setCurrentProgress(pct);
 
-        // Debounce the heavier progress writes — 1.5 s after last page turn
         clearTimeout(saveTimerRef.current);
         saveTimerRef.current = setTimeout(() => {
           if (pct > 0) {
-            db.books.update(bookId, { progress: pct });
-            if (trackedBookId) db.trackedBooks.update(trackedBookId, { readerProgress: pct });
+            db.books.update(bookIdRef.current, { progress: pct });
+            if (trackedBookIdRef.current) db.trackedBooks.update(trackedBookIdRef.current, { readerProgress: pct });
           }
         }, 1500);
       }
@@ -135,16 +161,17 @@ export default function EpubReader({ bookId, title, fileData, savedCfi, trackedB
       clearTimeout(saveTimerRef.current);
       book.destroy();
     };
-  }, [fileData]);
+  }, []); // empty deps: init runs once on mount; fileData never changes during a session
 
   useEffect(() => {
     themeRef.current = theme;
     const r = renditionRef.current;
-    if (!r) return;
+    // currentCfiRef.current is null until the first page loads (relocated fires).
+    // Skipping here avoids a second display() call colliding with the initial one.
+    if (!r || !currentCfiRef.current) return;
     r.themes.select(theme);
-    try {
-      r.getContents().forEach(contents => injectThemeCSS(contents, theme));
-    } catch {}
+    // Re-display the same page so the content hook fires and injects the new theme CSS.
+    r.display(currentCfiRef.current);
   }, [theme]);
 
   useEffect(() => {

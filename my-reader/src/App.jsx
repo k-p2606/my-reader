@@ -259,6 +259,7 @@ function ReaderRoute() {
   if (book.fileType === 'pdf') {
     return (
       <PdfReader
+        key={book.id}
         bookId={book.id}
         title={book.title}
         fileData={book.fileData}
@@ -270,6 +271,7 @@ function ReaderRoute() {
   }
   return (
     <EpubReader
+      key={book.id}
       bookId={book.id}
       title={book.title}
       fileData={book.fileData}

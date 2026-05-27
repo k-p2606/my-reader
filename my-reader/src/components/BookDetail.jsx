@@ -34,7 +34,12 @@ export default function BookDetail({ book, onClose, onOpen }) {
 
   const [confirming, setConfirming] = useState(false);
   const [status,    setStatus]    = useState(book.status    ?? 'want');
-  const [pagesRead, setPagesRead] = useState(book.pagesRead ?? 0);
+  const [pagesRead, setPagesRead] = useState(() => {
+    if (book.pagesRead > 0) return book.pagesRead;
+    if (book.readerProgress != null && book.totalPages > 0)
+      return Math.round(book.readerProgress * book.totalPages);
+    return 0;
+  });
   const [rating,    setRating]    = useState(book.rating    ?? 0);
   const [notes,     setNotes]     = useState(book.notes     ?? '');
   const [saving,     setSaving]    = useState(false);
@@ -58,7 +63,7 @@ export default function BookDetail({ book, onClose, onOpen }) {
 
   const pct = isLibrary
     ? Math.round((book.progress ?? 0) * 100)
-    : canTrackPages
+    : canTrackPages && pagesRead > 0
       ? Math.min(100, Math.round((pagesRead / book.totalPages) * 100))
       : book.readerProgress != null
         ? Math.round(book.readerProgress * 100)
