@@ -46,4 +46,41 @@ db.version(3).stores({
   }
 });
 
+const DEFAULT_LISTS = ['Want to read', 'Currently reading', 'Finished', 'Did Not Finish'];
+
+const STATUS_TO_LIST = {
+  want:     'Want to read',
+  reading:  'Currently reading',
+  finished: 'Finished',
+  dnf:      'Did Not Finish',
+};
+
+// Called explicitly from main.jsx before React renders.
+// Creates any missing default lists and places orphaned tracked books
+// into the correct list based on their status.
+export async function initDb() {
+  const now = new Date().toISOString();
+
+  const existing = await db.lists.where('name').anyOf(DEFAULT_LISTS).toArray();
+  const existingNames = new Set(existing.map(l => l.name));
+  const missing = DEFAULT_LISTS.filter(n => !existingNames.has(n));
+  if (missing.length) {
+    await db.lists.bulkAdd(missing.map(name => ({ name, createdAt: now })));
+  }
+
+  const allLists     = await db.lists.toArray();
+  const listByName   = Object.fromEntries(allLists.map(l => [l.name, l]));
+  const allTracked   = await db.trackedBooks.toArray();
+  const allListBooks = await db.listBooks.toArray();
+  const inAList      = new Set(allListBooks.map(lb => lb.trackedBookId));
+
+  const toAdd = [];
+  for (const book of allTracked) {
+    if (inAList.has(book.id) || !book.status) continue;
+    const list = listByName[STATUS_TO_LIST[book.status]];
+    if (list) toAdd.push({ listId: list.id, trackedBookId: book.id });
+  }
+  if (toAdd.length) await db.listBooks.bulkAdd(toAdd);
+}
+
 export default db;

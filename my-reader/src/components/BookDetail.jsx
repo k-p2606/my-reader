@@ -29,49 +29,59 @@ function StarRating({ value, onChange }) {
   );
 }
 
-export default function BookDetail({ book, onClose, onOpen }) {
+// book      — always provided; may be a db.books record (library) or db.trackedBooks record (lists)
+// trackedBook — optional; the linked db.trackedBooks record when opened from Library
+// onOpen    — optional; if provided, "Open book" button is shown (library context)
+export default function BookDetail({ book, trackedBook: trackedProp, onClose, onOpen }) {
   const isLibrary = 'fileType' in book;
 
-  const [confirming, setConfirming] = useState(false);
-  const [status,    setStatus]    = useState(book.status    ?? 'want');
+  // The tracked record drives status/pages/rating/notes.
+  // When opened from Library with a linked tracked book, that's trackedProp.
+  // When opened from Lists, book itself is the tracked record.
+  const tracked = trackedProp ?? (!isLibrary ? book : null);
+
+  const [confirming,   setConfirming]   = useState(false);
+  const [saving,       setSaving]       = useState(false);
+  const [editTitle,    setEditTitle]    = useState(book.title  ?? '');
+  const [editAuthor,   setEditAuthor]   = useState(book.author ?? '');
+  const [editingMeta,  setEditingMeta]  = useState(false);
+
+  const [status,    setStatus]    = useState(tracked?.status    ?? 'want');
   const [pagesRead, setPagesRead] = useState(() => {
-    if (book.pagesRead > 0) return book.pagesRead;
-    if (book.readerProgress != null && book.totalPages > 0)
-      return Math.round(book.readerProgress * book.totalPages);
+    if (!tracked) return 0;
+    if (tracked.pagesRead > 0) return tracked.pagesRead;
+    if (tracked.readerProgress != null && tracked.totalPages > 0)
+      return Math.round(tracked.readerProgress * tracked.totalPages);
     return 0;
   });
-  const [rating,    setRating]    = useState(book.rating    ?? 0);
-  const [notes,     setNotes]     = useState(book.notes     ?? '');
-  const [saving,     setSaving]    = useState(false);
-  const [editTitle,  setEditTitle]  = useState(book.title  ?? '');
-  const [editAuthor, setEditAuthor] = useState(book.author ?? '');
-  const [editingMeta, setEditingMeta] = useState(false);
+  const [rating, setRating] = useState(tracked?.rating ?? 0);
+  const [notes,  setNotes]  = useState(tracked?.notes  ?? '');
 
   const metaChanged = editTitle.trim() !== (book.title ?? '') || editAuthor.trim() !== (book.author ?? '');
 
   const notesFirstRender = useRef(true);
   useEffect(() => {
-    if (isLibrary) return;
+    if (!tracked) return;
     if (notesFirstRender.current) { notesFirstRender.current = false; return; }
     const timer = setTimeout(() => {
-      db.trackedBooks.update(book.id, { notes });
+      db.trackedBooks.update(tracked.id, { notes });
     }, 600);
     return () => clearTimeout(timer);
   }, [notes]);
 
-  const canTrackPages = !isLibrary && book.totalPages != null && book.totalPages > 0;
+  const canTrackPages = tracked?.totalPages != null && tracked.totalPages > 0;
 
-  const pct = isLibrary
-    ? Math.round((book.progress ?? 0) * 100)
-    : canTrackPages && pagesRead > 0
-      ? Math.min(100, Math.round((pagesRead / book.totalPages) * 100))
-      : book.readerProgress != null
-        ? Math.round(book.readerProgress * 100)
-        : 0;
+  const pct = tracked
+    ? (canTrackPages && pagesRead > 0
+        ? Math.min(100, Math.round((pagesRead / tracked.totalPages) * 100))
+        : tracked.readerProgress != null
+          ? Math.round(tracked.readerProgress * 100)
+          : 0)
+    : Math.round((book.progress ?? 0) * 100);
 
   function handlePagesChange(raw) {
     const n = Number(raw);
-    setPagesRead(canTrackPages ? Math.min(book.totalPages, Math.max(0, n)) : Math.max(0, n));
+    setPagesRead(canTrackPages ? Math.min(tracked.totalPages, Math.max(0, n)) : Math.max(0, n));
   }
 
   async function handleDelete() {
@@ -80,19 +90,21 @@ export default function BookDetail({ book, onClose, onOpen }) {
   }
 
   async function handleUpdateProgress() {
-    await db.trackedBooks.update(book.id, { pagesRead: Number(pagesRead) });
+    if (!tracked) return;
+    await db.trackedBooks.update(tracked.id, { pagesRead: Number(pagesRead) });
   }
 
   async function handleMarkFinished() {
+    if (!tracked) return;
     setSaving(true);
     const now = new Date().toISOString();
-    const finalPages = canTrackPages ? book.totalPages : Number(pagesRead);
+    const finalPages = canTrackPages ? tracked.totalPages : Number(pagesRead);
 
     await db.transaction('rw', db.trackedBooks, db.lists, db.listBooks, async () => {
-      await db.trackedBooks.update(book.id, {
+      await db.trackedBooks.update(tracked.id, {
         status: 'finished',
         pagesRead: finalPages,
-        dateFinished: book.dateFinished ?? now,
+        dateFinished: tracked.dateFinished ?? now,
       });
 
       const finishedList = await db.lists.where('name').equals('Finished').first();
@@ -103,11 +115,11 @@ export default function BookDetail({ book, onClose, onOpen }) {
         .toArray();
       const defaultIds = new Set(defaultLists.map(l => l.id));
 
-      const entries = await db.listBooks.where('trackedBookId').equals(book.id).toArray();
+      const entries = await db.listBooks.where('trackedBookId').equals(tracked.id).toArray();
       const toDelete = entries.filter(lb => defaultIds.has(lb.listId)).map(lb => lb.id);
       if (toDelete.length) await db.listBooks.bulkDelete(toDelete);
 
-      await db.listBooks.add({ listId: finishedList.id, trackedBookId: book.id });
+      await db.listBooks.add({ listId: finishedList.id, trackedBookId: tracked.id });
     });
 
     setSaving(false);
@@ -115,6 +127,7 @@ export default function BookDetail({ book, onClose, onOpen }) {
   }
 
   async function handleSave() {
+    if (!tracked) return;
     setSaving(true);
     const isFinishedOrDnf = status === 'finished' || status === 'dnf';
     const statusToListName = {
@@ -125,13 +138,13 @@ export default function BookDetail({ book, onClose, onOpen }) {
     };
 
     await db.transaction('rw', db.trackedBooks, db.lists, db.listBooks, async () => {
-      await db.trackedBooks.update(book.id, {
+      await db.trackedBooks.update(tracked.id, {
         status,
         pagesRead: Number(pagesRead),
         rating: rating || null,
         notes,
         dateFinished: isFinishedOrDnf
-          ? (book.dateFinished ?? new Date().toISOString())
+          ? (tracked.dateFinished ?? new Date().toISOString())
           : null,
       });
 
@@ -140,19 +153,21 @@ export default function BookDetail({ book, onClose, onOpen }) {
         .toArray();
       const defaultIds = new Set(defaultLists.map(l => l.id));
 
-      const entries = await db.listBooks.where('trackedBookId').equals(book.id).toArray();
+      const entries = await db.listBooks.where('trackedBookId').equals(tracked.id).toArray();
       const toDelete = entries.filter(lb => defaultIds.has(lb.listId)).map(lb => lb.id);
       if (toDelete.length) await db.listBooks.bulkDelete(toDelete);
 
       const targetList = defaultLists.find(l => l.name === statusToListName[status]);
       if (targetList) {
-        await db.listBooks.add({ listId: targetList.id, trackedBookId: book.id });
+        await db.listBooks.add({ listId: targetList.id, trackedBookId: tracked.id });
       }
     });
 
     setSaving(false);
     onClose();
   }
+
+  const coverUrl = tracked?.coverUrl ?? null;
 
   return (
     <>
@@ -162,7 +177,7 @@ export default function BookDetail({ book, onClose, onOpen }) {
 
         <div className="flex items-center justify-between px-5 py-4 border-b border-dust shrink-0">
           <p className="text-[10px] font-semibold tracking-[0.18em] uppercase text-muted">
-            {isLibrary ? '/ library book' : '/ book details'}
+            / book details
           </p>
           <button
             onClick={onClose}
@@ -177,8 +192,8 @@ export default function BookDetail({ book, onClose, onOpen }) {
           {/* Identity */}
           <div className="flex gap-4">
             <div className="w-20 h-28 shrink-0 rounded-xl overflow-hidden bg-parchment flex items-center justify-center">
-              {!isLibrary && book.coverUrl ? (
-                <img src={book.coverUrl} alt={book.title} className="w-full h-full object-cover" />
+              {coverUrl ? (
+                <img src={coverUrl} alt={book.title} className="w-full h-full object-cover" />
               ) : (
                 <svg className="w-8 h-8 text-faint" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25" />
@@ -236,14 +251,14 @@ export default function BookDetail({ book, onClose, onOpen }) {
                   )}
                 </>
               )}
-              {!isLibrary && (
+              {tracked && (
                 <p className="text-xs text-faint mt-1.5">
-                  {book.totalPages != null ? `${book.totalPages} pages` : 'Unknown length'}
+                  {tracked.totalPages != null ? `${tracked.totalPages} pages` : 'Unknown length'}
                 </p>
               )}
-              {!isLibrary && book.dateAdded && (
+              {tracked?.dateAdded && (
                 <p className="text-xs text-faint mt-0.5">
-                  Added {new Date(book.dateAdded).toLocaleDateString(undefined, {
+                  Added {new Date(tracked.dateAdded).toLocaleDateString(undefined, {
                     month: 'short', day: 'numeric', year: 'numeric',
                   })}
                 </p>
@@ -265,13 +280,13 @@ export default function BookDetail({ book, onClose, onOpen }) {
                 style={{ width: `${pct}%` }}
               />
             </div>
-            {!isLibrary && canTrackPages && (
-              <p className="text-xs text-faint mt-1.5">{pagesRead} of {book.totalPages} pages</p>
+            {tracked && canTrackPages && (
+              <p className="text-xs text-faint mt-1.5">{pagesRead} of {tracked.totalPages} pages</p>
             )}
           </div>
 
-          {/* Tracked-book controls */}
-          {!isLibrary && (
+          {/* Tracked-book controls — shown whenever a tracked record exists */}
+          {tracked && (
             <>
               <div>
                 <p className="text-[10px] font-semibold text-faint uppercase tracking-[0.15em] mb-2">Status</p>
@@ -299,13 +314,13 @@ export default function BookDetail({ book, onClose, onOpen }) {
                   <input
                     type="number"
                     min={0}
-                    max={canTrackPages ? book.totalPages : undefined}
+                    max={canTrackPages ? tracked.totalPages : undefined}
                     value={pagesRead}
                     onChange={e => handlePagesChange(e.target.value)}
                     className="w-20 text-sm text-center border border-dust bg-cream rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-rust text-ink"
                   />
                   {canTrackPages && (
-                    <p className="text-xs text-faint">of {book.totalPages}</p>
+                    <p className="text-xs text-faint">of {tracked.totalPages}</p>
                   )}
                   <button
                     onClick={handleUpdateProgress}
@@ -316,7 +331,7 @@ export default function BookDetail({ book, onClose, onOpen }) {
                 </div>
                 {canTrackPages && (
                   <p className="text-xs text-faint mt-1.5">
-                    {pct}% · {book.totalPages - Number(pagesRead)} pages left
+                    {pct}% · {tracked.totalPages - Number(pagesRead)} pages left
                   </p>
                 )}
               </div>
@@ -327,7 +342,7 @@ export default function BookDetail({ book, onClose, onOpen }) {
                   value={rating}
                   onChange={v => {
                     setRating(v);
-                    db.trackedBooks.update(book.id, { rating: v || null });
+                    db.trackedBooks.update(tracked.id, { rating: v || null });
                   }}
                 />
                 {rating > 0 && (
@@ -356,24 +371,44 @@ export default function BookDetail({ book, onClose, onOpen }) {
 
         {/* Footer */}
         <div className="px-5 py-4 border-t border-dust shrink-0 flex flex-col gap-2">
-          {isLibrary ? (
+          {/* Tracked actions — shown whenever tracked record exists */}
+          {tracked && status !== 'finished' && (
+            <button
+              onClick={handleMarkFinished}
+              disabled={saving}
+              className="w-full text-sm font-semibold text-warm-white bg-[#3A6435] hover:bg-[#2E5029] rounded-xl py-2.5 transition-colors disabled:opacity-60"
+            >
+              Finished
+            </button>
+          )}
+          {tracked && (
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="w-full text-sm font-semibold text-warm-white bg-ink hover:bg-rust rounded-xl py-2.5 transition-colors disabled:opacity-60"
+            >
+              {saving ? 'Saving…' : 'Save'}
+            </button>
+          )}
+
+          {/* Library actions — shown when onOpen is provided */}
+          {onOpen && (
             <>
               {metaChanged && (
                 <button
                   onClick={async () => {
-                    const title = editTitle.trim() || book.title;
+                    const title  = editTitle.trim()  || book.title;
                     const author = editAuthor.trim() || null;
                     await db.books.update(book.id, { title, author });
                     setEditingMeta(false);
-                    onClose();
                   }}
                   className="w-full text-sm font-semibold text-warm-white bg-rust hover:bg-rust-hover rounded-xl py-2.5 transition-colors"
                 >
-                  Save changes
+                  Save title / author
                 </button>
               )}
               <button
-                onClick={() => onOpen?.(book)}
+                onClick={() => onOpen(book)}
                 className="w-full text-sm font-semibold text-warm-white bg-ink hover:bg-rust rounded-xl py-2.5 transition-colors"
               >
                 Open book
@@ -402,25 +437,6 @@ export default function BookDetail({ book, onClose, onOpen }) {
                   Remove from library
                 </button>
               )}
-            </>
-          ) : (
-            <>
-              {status !== 'finished' && (
-                <button
-                  onClick={handleMarkFinished}
-                  disabled={saving}
-                  className="w-full text-sm font-semibold text-warm-white bg-[#3A6435] hover:bg-[#2E5029] rounded-xl py-2.5 transition-colors disabled:opacity-60"
-                >
-                  Finished
-                </button>
-              )}
-              <button
-                onClick={handleSave}
-                disabled={saving}
-                className="w-full text-sm font-semibold text-warm-white bg-ink hover:bg-rust rounded-xl py-2.5 transition-colors disabled:opacity-60"
-              >
-                {saving ? 'Saving…' : 'Save'}
-              </button>
             </>
           )}
         </div>

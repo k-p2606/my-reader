@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import db from '../db';
 import BookDetail from './BookDetail';
+import { searchBooks } from '../api/openLibrary';
 
 const DEFAULT_NAMES = new Set(['Want to read', 'Currently reading', 'Finished', 'Did Not Finish']);
 
@@ -124,6 +125,175 @@ function BookRow({ book, lists, onOpen, onMove, onRemove }) {
   );
 }
 
+const LIST_STATUS = {
+  'Want to read':      'want',
+  'Currently reading': 'reading',
+  'Finished':          'finished',
+  'Did Not Finish':    'dnf',
+};
+
+function AddBookModal({ lists, onClose }) {
+  const defaultLists = lists.filter(l => DEFAULT_NAMES.has(l.name));
+  const wantList     = defaultLists.find(l => l.name === 'Want to read');
+
+  const [targetListId, setTargetListId] = useState(wantList?.id ?? defaultLists[0]?.id);
+  const [query,   setQuery]   = useState('');
+  const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error,   setError]   = useState(null);
+  const [adding,  setAdding]  = useState(null);
+
+  async function doSearch(q) {
+    if (!q.trim()) return;
+    setLoading(true);
+    setError(null);
+    try {
+      setResults(await searchBooks(q.trim()));
+    } catch {
+      setError('Search failed. Check your connection.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleAdd(olBook) {
+    setAdding(olBook.olKey);
+    try {
+      const targetList = defaultLists.find(l => l.id === targetListId);
+      const status     = LIST_STATUS[targetList?.name] ?? 'want';
+
+      await db.transaction('rw', db.trackedBooks, db.listBooks, async () => {
+        const existing = await db.trackedBooks.where('olKey').equals(olBook.olKey).first();
+
+        if (!existing) {
+          const id = await db.trackedBooks.add({
+            olKey:         olBook.olKey,
+            title:         olBook.title,
+            author:        olBook.author,
+            coverUrl:      olBook.coverUrl,
+            totalPages:    olBook.totalPages,
+            pagesRead:     0,
+            readerProgress: null,
+            status,
+            rating:        null,
+            notes:         '',
+            dateAdded:     new Date().toISOString(),
+            dateFinished:  null,
+          });
+          await db.listBooks.add({ listId: targetListId, trackedBookId: id });
+        } else {
+          // Already tracked — move to the selected list
+          await db.trackedBooks.update(existing.id, { status });
+          const defaultIds = new Set(defaultLists.map(l => l.id));
+          const entries    = await db.listBooks.where('trackedBookId').equals(existing.id).toArray();
+          const toDelete   = entries.filter(lb => defaultIds.has(lb.listId)).map(lb => lb.id);
+          if (toDelete.length) await db.listBooks.bulkDelete(toDelete);
+          await db.listBooks.add({ listId: targetListId, trackedBookId: existing.id });
+        }
+      });
+
+      onClose();
+    } finally {
+      setAdding(null);
+    }
+  }
+
+  return (
+    <>
+      <div className="fixed inset-0 bg-ink/40 z-40" onClick={onClose} />
+      <div className="fixed right-0 top-0 h-full w-full max-w-sm bg-warm-white z-50 shadow-2xl flex flex-col border-l border-dust">
+
+        <div className="flex items-center justify-between px-5 py-4 border-b border-dust shrink-0">
+          <p className="text-[10px] font-semibold tracking-[0.18em] uppercase text-muted">/ add a book</p>
+          <button
+            onClick={onClose}
+            className="w-7 h-7 flex items-center justify-center rounded-lg text-faint hover:text-ink hover:bg-parchment transition-colors text-xl leading-none"
+          >
+            ×
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-5 py-5 space-y-5">
+          {/* List picker */}
+          <div>
+            <p className="text-[10px] font-semibold text-faint uppercase tracking-[0.15em] mb-2">Add to list</p>
+            <div className="grid grid-cols-2 gap-1.5">
+              {defaultLists.map(list => (
+                <button
+                  key={list.id}
+                  onClick={() => setTargetListId(list.id)}
+                  className={[
+                    'text-xs font-semibold rounded-lg px-3 py-2 border transition-colors text-left',
+                    targetListId === list.id
+                      ? 'bg-rust text-warm-white border-rust'
+                      : 'bg-cream text-muted border-dust hover:border-dust-dark hover:text-ink',
+                  ].join(' ')}
+                >
+                  {list.name}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Search */}
+          <div className="space-y-3">
+            <p className="text-[10px] font-semibold text-faint uppercase tracking-[0.15em]">Search Open Library</p>
+            <div className="flex gap-2">
+              <input
+                autoFocus
+                value={query}
+                onChange={e => setQuery(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && doSearch(query)}
+                placeholder="Title, author…"
+                className="flex-1 text-sm px-3 py-2 border border-dust bg-cream rounded-lg focus:outline-none focus:ring-2 focus:ring-rust placeholder-faint text-ink"
+              />
+              <button
+                onClick={() => doSearch(query)}
+                disabled={loading}
+                className="text-sm font-semibold text-warm-white bg-ink hover:bg-rust rounded-lg px-3 py-2 transition-colors disabled:opacity-50"
+              >
+                {loading ? '…' : 'Go'}
+              </button>
+            </div>
+
+            {error && <p className="text-xs text-red-500">{error}</p>}
+
+            {results.length > 0 && (
+              <ul className="flex flex-col gap-2">
+                {results.map(r => (
+                  <li key={r.olKey} className="flex items-center gap-3 border border-dust rounded-xl p-3 bg-warm-white">
+                    <div className="w-10 h-14 shrink-0 rounded-lg overflow-hidden bg-parchment flex items-center justify-center">
+                      {r.coverThumb ? (
+                        <img src={r.coverThumb} alt={r.title} className="w-full h-full object-cover" />
+                      ) : (
+                        <svg className="w-5 h-5 text-faint" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25" />
+                        </svg>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-ink truncate">{r.title}</p>
+                      <p className="text-xs text-muted truncate">{r.author}</p>
+                      {r.totalPages && <p className="text-xs text-faint">{r.totalPages} pages</p>}
+                    </div>
+                    <button
+                      onClick={() => handleAdd(r)}
+                      disabled={adding === r.olKey}
+                      className="shrink-0 text-xs font-semibold text-warm-white bg-ink hover:bg-rust rounded-lg px-2.5 py-1.5 transition-colors disabled:opacity-50"
+                    >
+                      {adding === r.olKey ? '…' : '+ Add'}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
 function NewListForm({ onDone }) {
   const [name, setName] = useState('');
   const inputRef = useRef(null);
@@ -170,6 +340,7 @@ function NewListForm({ onDone }) {
 export default function ListsView() {
   const [selectedBook,        setSelectedBook]        = useState(null);
   const [showNewForm,         setShowNewForm]         = useState(false);
+  const [showAddBook,         setShowAddBook]         = useState(false);
   const [confirmDeleteListId, setConfirmDeleteListId] = useState(null);
 
   const listsRaw        = useLiveQuery(() => db.lists.toArray(),        []);
@@ -263,12 +434,20 @@ export default function ListsView() {
             </h1>
           </div>
           {!showNewForm && (
-            <button
-              onClick={() => setShowNewForm(true)}
-              className="text-xs font-semibold text-muted hover:text-ink border border-dust hover:border-dust-dark rounded-full px-4 py-2 transition-colors shrink-0 mb-1"
-            >
-              + new list
-            </button>
+            <div className="flex gap-2 mb-1 shrink-0">
+              <button
+                onClick={() => setShowAddBook(true)}
+                className="text-xs font-semibold text-warm-white bg-ink hover:bg-rust rounded-full px-4 py-2 transition-colors"
+              >
+                + add book
+              </button>
+              <button
+                onClick={() => setShowNewForm(true)}
+                className="text-xs font-semibold text-muted hover:text-ink border border-dust hover:border-dust-dark rounded-full px-4 py-2 transition-colors"
+              >
+                + new list
+              </button>
+            </div>
           )}
         </div>
 
@@ -343,6 +522,13 @@ export default function ListsView() {
         <BookDetail
           book={selectedBook}
           onClose={() => setSelectedBook(null)}
+        />
+      )}
+
+      {showAddBook && (
+        <AddBookModal
+          lists={sorted}
+          onClose={() => setShowAddBook(false)}
         />
       )}
     </>

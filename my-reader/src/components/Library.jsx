@@ -288,6 +288,7 @@ export default function Library({ onOpenBook }) {
       {detailBook && (
         <BookDetail
           book={detailBook}
+          trackedBook={detailBook.trackedBookId ? trackedById[detailBook.trackedBookId] : null}
           onClose={() => setDetailBook(null)}
           onOpen={book => { setDetailBook(null); onOpenBook?.(book); }}
         />
